@@ -144,14 +144,6 @@ h1 {
   margin-bottom: 14px;
 }
 
-.game-explanation {
-  font-size: 13px;
-  color: var(--text-dim);
-  margin: 0;
-  line-height: 1.5;
-  text-align: center;
-}
-
 /* ── Board ────────────────────────────────────────────── */
 
 .game-container {
@@ -608,7 +600,6 @@ h1 {
   .score-value { font-size: 18px; }
   .score-label { font-size: 9px; }
   .game-intro { margin-bottom: 10px; }
-  .game-explanation { font-size: 12px; }
   .intro-buttons { gap: 6px; }
   .game-message p { font-size: 38px; }
 }
