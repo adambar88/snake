@@ -194,9 +194,9 @@ export default function App() {
     // Snapshot localStorage speed records when stats overlay opens
     useEffect(() => {
         if (showStats) setSpeedRecords({
-            slow:   parseInt(localStorage.getItem('snake-best-slow')   || '0', 10),
+            slow: parseInt(localStorage.getItem('snake-best-slow') || '0', 10),
             normal: parseInt(localStorage.getItem('snake-best-normal') || '0', 10),
-            fast:   parseInt(localStorage.getItem('snake-best-fast')   || '0', 10),
+            fast: parseInt(localStorage.getItem('snake-best-fast') || '0', 10),
         })
     }, [showStats, setSpeedRecords])
 
@@ -258,6 +258,8 @@ export default function App() {
     }, [])
 
     const grid = useMemo(() => buildGrid(state.snake, state.food), [state.snake, state.food])
+    const currentSpeedBest = parseInt(localStorage.getItem(`snake-best-${speed}`) || '0', 10)
+    const isSpeedRecord = state.phase === 'running' && state.score > currentSpeedBest
 
     return (
         <>
@@ -355,6 +357,7 @@ export default function App() {
                         <div className="score-container">
                             <div className="score-label">Best</div>
                             <div className="score-value">{stats.bestScore}</div>
+                            {isSpeedRecord && <span className="speed-record-dot" aria-label="New speed record" />}
                         </div>
                     </div>
                 </div>
@@ -381,7 +384,7 @@ export default function App() {
                 </div>
 
                 {/* Board */}
-                <div className={`game-container${shake ? ' game-over-shake' : ''}`}>
+                <div className={`game-container${shake ? ' game-over-shake' : ''}`} role="application" aria-label="Snake game board">
                     <div className="grid-canvas">
                         {grid.map((row, y) =>
                             row.map((cell, x) => (
