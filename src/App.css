@@ -309,6 +309,60 @@ h1 {
     }
 }
 
+/* ── Obstacle cells ──────────────────────────────────── */
+
+.cell-obstacle {
+    background: var(--text-dim);
+    border-radius: 2px;
+    opacity: 0.45;
+}
+
+/* ── Bonus food ───────────────────────────────────────── */
+
+.cell-bonus {
+    position: relative;
+}
+
+.cell-bonus::after {
+    content: '';
+    position: absolute;
+    inset: 1px;
+    background: var(--food);
+    border-radius: 50%;
+    box-shadow: 0 0 10px var(--food-glow), 0 0 20px var(--food-glow);
+    animation: bonus-pulse 0.8s ease-in-out infinite alternate;
+}
+
+@keyframes bonus-pulse {
+    from {
+        opacity: 0.8;
+        transform: scale(0.75);
+    }
+
+    to {
+        opacity: 1;
+        transform: scale(1);
+    }
+}
+
+/* ── Grid lines ───────────────────────────────────────── */
+
+.grid-lines .grid-cell {
+    border: 1px solid var(--cell-empty);
+    box-sizing: border-box;
+}
+
+/* ── Countdown urgency ────────────────────────────────── */
+
+.countdown-urgent .score-value {
+    animation: urgency-pulse 0.5s ease-in-out infinite alternate;
+}
+
+@keyframes urgency-pulse {
+    from { opacity: 1; }
+    to   { opacity: 0.4; }
+}
+
 /* ── Overlay ──────────────────────────────────────────── */
 
 .game-message {
@@ -451,6 +505,37 @@ h1 {
     grid-template-columns: 1fr 1fr 1fr;
     gap: 8px;
     width: 100%;
+}
+
+.settings-button {
+    position: relative;
+}
+
+.settings-badge {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    width: 14px;
+    height: 14px;
+    border-radius: 50%;
+    background: var(--text);
+    color: var(--bg);
+    font-size: 9px;
+    font-weight: 700;
+    margin-left: 4px;
+    vertical-align: middle;
+    line-height: 1;
+}
+
+.settings-active {
+    color: var(--text);
+}
+
+.ramp-indicator {
+    font-size: 9px;
+    font-weight: 600;
+    opacity: 0.7;
+    letter-spacing: 0;
 }
 
 .stats-button,
@@ -765,6 +850,140 @@ h1 {
     letter-spacing: -0.02em;
 }
 
+/* ── Settings panel ───────────────────────────────────── */
+
+.settings-note {
+    font-size: 11px;
+    color: var(--text-dim);
+    margin: -12px 0 18px;
+    letter-spacing: 0.02em;
+}
+
+.settings-group {
+    display: flex;
+    flex-direction: column;
+    gap: 0;
+}
+
+.settings-row {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 12px;
+    padding: 12px 0;
+    border-bottom: 1px solid var(--border);
+}
+
+.settings-row:last-child {
+    border-bottom: none;
+}
+
+.settings-row-wide {
+    flex-direction: column;
+    align-items: flex-start;
+    gap: 10px;
+}
+
+.settings-row-text {
+    display: flex;
+    flex-direction: column;
+    gap: 2px;
+    flex: 1;
+    min-width: 0;
+}
+
+.settings-label {
+    font-size: 13px;
+    font-weight: 600;
+    color: var(--text);
+    letter-spacing: 0.01em;
+}
+
+.settings-desc {
+    font-size: 11px;
+    color: var(--text-dim);
+    line-height: 1.4;
+}
+
+.toggle-btn {
+    flex-shrink: 0;
+    background: none;
+    border: 1px solid var(--border);
+    border-radius: 20px;
+    padding: 4px 14px;
+    font-size: 11px;
+    font-weight: 600;
+    font-family: inherit;
+    letter-spacing: 0.05em;
+    text-transform: uppercase;
+    color: var(--text-dim);
+    cursor: pointer;
+    transition: color 130ms, border-color 130ms, background 130ms;
+    min-height: 32px;
+    min-width: 52px;
+}
+
+.toggle-btn:hover {
+    color: var(--text);
+    border-color: var(--text-dim);
+}
+
+.toggle-on {
+    background: var(--text);
+    color: var(--bg);
+    border-color: var(--text);
+}
+
+.toggle-on:hover {
+    opacity: 0.85;
+    color: var(--bg);
+}
+
+.segment-ctrl {
+    display: flex;
+    gap: 0;
+    border: 1px solid var(--border);
+    border-radius: 8px;
+    overflow: hidden;
+    width: 100%;
+}
+
+.segment-btn {
+    flex: 1;
+    background: none;
+    border: none;
+    border-right: 1px solid var(--border);
+    padding: 7px 6px;
+    font-size: 11px;
+    font-weight: 500;
+    font-family: inherit;
+    letter-spacing: 0.04em;
+    text-transform: uppercase;
+    color: var(--text-dim);
+    cursor: pointer;
+    transition: color 130ms, background 130ms;
+    line-height: 1;
+    min-height: 36px;
+}
+
+.segment-btn:last-child {
+    border-right: none;
+}
+
+.segment-btn:hover {
+    color: var(--text);
+}
+
+.segment-active {
+    background: var(--text);
+    color: var(--bg);
+}
+
+.segment-active:hover {
+    color: var(--bg);
+    opacity: 0.88;
+}
+
 /* ── Responsive ───────────────────────────────────────── */
 
 @media (max-width: 520px) {
@@ -848,6 +1067,17 @@ h1 {
     .theme-btn svg,
     .speed-record-dot {
         animation: none;
+    }
+
+    .cell-bonus::after {
+        animation: none;
+        opacity: 1;
+        transform: scale(0.88);
+    }
+
+    .countdown-urgent .score-value {
+        animation: none;
+        opacity: 1;
     }
 }
 

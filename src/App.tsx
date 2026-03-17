@@ -1,9 +1,9 @@
 import { useEffect, useRef, useCallback, useReducer, useMemo } from 'react'
 import './App.css'
 import {
-    type Direction, type Point, GRID, SPEED_MS,
+    type Direction, type Point, type ObstaclePreset, GRID, SPEED_MS,
     createInitialSnake, moveSnake, grow,
-    isDead, placeFood, oppositeDir,
+    isDead, placeFood, oppositeDir, generateObstacles,
 } from './gameLogic'
 
 // ── Types ──────────────────────────────────────────────
@@ -16,6 +16,24 @@ interface Stats {
     totalFood: number
 }
 
+interface Settings {
+    wrapWalls: boolean
+    bonusFood: boolean
+    obstacles: ObstaclePreset
+    countdown: 0 | 60 | 90
+    autoRamp: boolean
+    gridLines: boolean
+}
+
+const DEFAULT_SETTINGS: Settings = {
+    wrapWalls: false,
+    bonusFood: false,
+    obstacles: 'none',
+    countdown: 0,
+    autoRamp: false,
+    gridLines: false,
+}
+
 function loadStats(): Stats {
     try {
         return JSON.parse(localStorage.getItem('snake-stats') || 'null') ?? { gamesPlayed: 0, bestScore: 0, totalFood: 0 }
@@ -24,6 +42,16 @@ function loadStats(): Stats {
 
 function saveStats(s: Stats) {
     localStorage.setItem('snake-stats', JSON.stringify(s))
+}
+
+function loadSettings(): Settings {
+    try {
+        return { ...DEFAULT_SETTINGS, ...JSON.parse(localStorage.getItem('snake-settings') || 'null') }
+    } catch { return { ...DEFAULT_SETTINGS } }
+}
+
+function saveSettings(s: Settings) {
+    localStorage.setItem('snake-settings', JSON.stringify(s))
 }
 
 // ── Theme ──────────────────────────────────────────────
@@ -41,39 +69,71 @@ function applyTheme(theme: string) {
 
 // ── Game state ─────────────────────────────────────────
 
-type Phase = 'idle' | 'running' | 'dead'
+type Phase = 'idle' | 'running' | 'paused' | 'dead'
+
+interface BonusFood {
+    pos: Point
+    expiresAt: number
+    value: number
+}
 
 interface GameState {
     snake: Point[]
     food: Point
+    bonusFood: BonusFood | null
+    obstacles: Point[]
     dir: Direction
     pendingDir: Direction
     score: number
+    timeLeft: number    // seconds; -1 = no countdown
+    speedLevel: number  // auto-ramp level; 0 = base speed
     phase: Phase
 }
 
-function initState(): GameState {
+function initState(settings: Settings): GameState {
     const snake = createInitialSnake()
+    const obstacles = generateObstacles(settings.obstacles)
+    const food = placeFood(snake, obstacles)
     return {
         snake,
-        food: placeFood(snake),
+        food,
+        bonusFood: null,
+        obstacles,
         dir: 'RIGHT',
         pendingDir: 'RIGHT',
         score: 0,
+        timeLeft: settings.countdown > 0 ? settings.countdown : -1,
+        speedLevel: 0,
         phase: 'idle',
     }
 }
 
 type Action =
     | { type: 'START' }
-    | { type: 'TICK' }
+    | { type: 'PAUSE' }
+    | { type: 'RESUME' }
+    | { type: 'TICK'; settings: Settings }
+    | { type: 'COUNTDOWN_TICK' }
+    | { type: 'SPAWN_BONUS'; pos: Point; expiresAt: number }
+    | { type: 'EXPIRE_BONUS' }
     | { type: 'STEER'; dir: Direction }
-    | { type: 'RESET' }
+    | { type: 'RESET'; settings: Settings }
+
+function currentSpeedMs(speed: Speed, speedLevel: number): number {
+    const base = SPEED_MS[speed]
+    return Math.max(40, Math.round(base * Math.pow(0.9, speedLevel)))
+}
 
 function reducer(state: GameState, action: Action): GameState {
     switch (action.type) {
         case 'START':
             return { ...state, phase: 'running' }
+
+        case 'PAUSE':
+            return state.phase === 'running' ? { ...state, phase: 'paused' } : state
+
+        case 'RESUME':
+            return state.phase === 'paused' ? { ...state, phase: 'running' } : state
 
         case 'STEER': {
             if (oppositeDir(state.dir, action.dir)) return state
@@ -82,27 +142,53 @@ function reducer(state: GameState, action: Action): GameState {
 
         case 'TICK': {
             if (state.phase !== 'running') return state
+            const { settings } = action
             const newDir = state.pendingDir
-            const moved = moveSnake(state.snake, newDir)
-            if (isDead(moved)) {
+            const moved = moveSnake(state.snake, newDir, settings.wrapWalls)
+            if (isDead(moved, state.obstacles, settings.wrapWalls)) {
                 return { ...state, dir: newDir, snake: moved, phase: 'dead' }
             }
             const ateFood = moved[0].x === state.food.x && moved[0].y === state.food.y
-            const newSnake = ateFood ? grow(moved) : moved
-            const newFood = ateFood ? placeFood(newSnake) : state.food
+            const ateBonus = state.bonusFood !== null &&
+                moved[0].x === state.bonusFood.pos.x && moved[0].y === state.bonusFood.pos.y
+            const bonusValue = state.bonusFood?.value ?? 0
+            const newSnake = (ateFood || ateBonus) ? grow(moved) : moved
+            const newFood = ateFood
+                ? placeFood(newSnake, state.obstacles, state.bonusFood ? [state.bonusFood.pos] : [])
+                : state.food
+            const newBonus = ateBonus ? null : state.bonusFood
+            const scoreGain = (ateFood ? 1 : 0) + (ateBonus ? bonusValue : 0)
+            const newScore = state.score + scoreGain
+            const newSpeedLevel = settings.autoRamp ? Math.floor(newScore / 10) : 0
             return {
                 ...state,
                 dir: newDir,
                 pendingDir: newDir,
                 snake: newSnake,
                 food: newFood,
-                score: ateFood ? state.score + 1 : state.score,
+                bonusFood: newBonus,
+                score: newScore,
+                speedLevel: newSpeedLevel,
                 phase: 'running',
             }
         }
 
+        case 'COUNTDOWN_TICK': {
+            if (state.phase !== 'running' || state.timeLeft <= 0) return state
+            const newTime = state.timeLeft - 1
+            if (newTime === 0) return { ...state, timeLeft: 0, phase: 'dead' }
+            return { ...state, timeLeft: newTime }
+        }
+
+        case 'SPAWN_BONUS':
+            if (state.bonusFood !== null) return state
+            return { ...state, bonusFood: { pos: action.pos, expiresAt: action.expiresAt, value: 3 } }
+
+        case 'EXPIRE_BONUS':
+            return { ...state, bonusFood: null }
+
         case 'RESET':
-            return initState()
+            return initState(action.settings)
 
         default:
             return state
@@ -111,10 +197,18 @@ function reducer(state: GameState, action: Action): GameState {
 
 // ── Board building ─────────────────────────────────────
 
-type CellType = 'empty' | 'head' | 'body' | 'tail' | 'food'
+type CellType = 'empty' | 'head' | 'body' | 'tail' | 'food' | 'bonus' | 'obstacle'
 
-function buildGrid(snake: Point[], food: Point): CellType[][] {
+function buildGrid(
+    snake: Point[],
+    food: Point,
+    bonusFood: BonusFood | null,
+    obstacles: Point[],
+): CellType[][] {
     const grid: CellType[][] = Array.from({ length: GRID }, () => Array(GRID).fill('empty'))
+    for (const { x, y } of obstacles) {
+        if (x >= 0 && x < GRID && y >= 0 && y < GRID) grid[y][x] = 'obstacle'
+    }
     for (let i = snake.length - 1; i >= 0; i--) {
         const { x, y } = snake[i]
         if (x < 0 || x >= GRID || y < 0 || y >= GRID) continue
@@ -123,17 +217,26 @@ function buildGrid(snake: Point[], food: Point): CellType[][] {
         else grid[y][x] = 'body'
     }
     grid[food.y][food.x] = 'food'
+    if (bonusFood) grid[bonusFood.pos.y][bonusFood.pos.x] = 'bonus'
     return grid
 }
 
 // ── Main component ─────────────────────────────────────
 
 export default function App() {
-    const [state, dispatch] = useReducer(reducer, undefined, initState)
-    const [theme, setThemeState] = useThemeState()
+    const [settings, setSettingsState] = useSettingsState()
+    const settingsRef = useRef(settings)
+    settingsRef.current = settings
+
     const [speed, setSpeed] = useSpeedState()
+    const speedRef = useRef(speed)
+    speedRef.current = speed
+
+    const [state, dispatch] = useReducer(reducer, undefined, () => initState(settings))
+    const [theme, setThemeState] = useThemeState()
     const [showHelp, openHelp, isHelpClosing, closeHelp] = useClosableOverlay()
     const [showStats, openStats, isStatsClosing, closeStats] = useClosableOverlay()
+    const [showSettings, openSettings, isSettingsClosing, closeSettings] = useClosableOverlay()
     const [stats, setStats] = useStatsData()
     const [shake, setShake] = useShakeState()
     const [scoreDelta, setScoreDelta] = useScoreDeltaState()
@@ -144,8 +247,10 @@ export default function App() {
     const prevScore = useRef(state.score)
     const phaseRef = useRef(state.phase)
     phaseRef.current = state.phase
-    const speedRef = useRef(speed)
-    speedRef.current = speed
+    const speedRef2 = speedRef  // alias kept for clarity in effects
+    const stateRef = useRef(state)
+    stateRef.current = state
+    // Score delta + flash
     useEffect(() => {
         if (state.score > prevScore.current) {
             setScoreDelta(state.score - prevScore.current)
@@ -156,14 +261,46 @@ export default function App() {
         prevScore.current = state.score
     }, [state.score, setScoreDelta, setFlashHead])
 
-    // Game tick
+    // Game tick — restarts when speedLevel changes (auto-ramp)
     useEffect(() => {
         if (state.phase === 'running') {
-            tickRef.current = setInterval(() => dispatch({ type: 'TICK' }), SPEED_MS[speed])
+            const ms = currentSpeedMs(speedRef2.current, state.speedLevel)
+            tickRef.current = setInterval(
+                () => dispatch({ type: 'TICK', settings: settingsRef.current }),
+                ms,
+            )
             return () => { if (tickRef.current) clearInterval(tickRef.current) }
         }
         if (tickRef.current) clearInterval(tickRef.current)
-    }, [state.phase, speed])
+    }, [state.phase, state.speedLevel])
+
+    // Countdown timer (1 s interval, separate from game tick)
+    useEffect(() => {
+        if (state.phase !== 'running' || state.timeLeft < 0) return
+        const id = setInterval(() => dispatch({ type: 'COUNTDOWN_TICK' }), 1000)
+        return () => clearInterval(id)
+    }, [state.phase, state.timeLeft])
+
+    // Bonus food spawner — fires every 8 s while running
+    useEffect(() => {
+        if (state.phase !== 'running' || !settings.bonusFood) return
+        const id = setInterval(() => {
+            const cur = stateRef.current
+            if (cur.bonusFood !== null) return
+            const pos = placeFood(cur.snake, cur.obstacles, [cur.food])
+            dispatch({ type: 'SPAWN_BONUS', pos, expiresAt: Date.now() + 5000 })
+        }, 8000)
+        return () => clearInterval(id)
+    }, [state.phase, settings.bonusFood])
+
+    // Bonus food expiry watcher
+    useEffect(() => {
+        if (!state.bonusFood) return
+        const remaining = state.bonusFood.expiresAt - Date.now()
+        if (remaining <= 0) { dispatch({ type: 'EXPIRE_BONUS' }); return }
+        const id = setTimeout(() => dispatch({ type: 'EXPIRE_BONUS' }), remaining)
+        return () => clearTimeout(id)
+    }, [state.bonusFood])
 
     // Save stats on death — read fresh from localStorage to avoid stale closure
     useEffect(() => {
@@ -180,7 +317,7 @@ export default function App() {
             setStats(next)
             saveStats(next)
             // Update per-speed best record
-            const speedKey = `snake-best-${speedRef.current}`
+            const speedKey = `snake-best-${speedRef2.current}`
             const prevBest = parseInt(localStorage.getItem(speedKey) || '0', 10)
             if (state.score > prevBest) localStorage.setItem(speedKey, String(state.score))
         }
@@ -210,11 +347,19 @@ export default function App() {
         }
         const onKey = (e: KeyboardEvent) => {
             const phase = phaseRef.current
+            // Pause / resume
+            if (e.key === 'p' || e.key === 'P' || e.key === 'Escape') {
+                if (phase === 'running') { e.preventDefault(); dispatch({ type: 'PAUSE' }) }
+                else if (phase === 'paused') { e.preventDefault(); dispatch({ type: 'RESUME' }) }
+                return
+            }
             if (dirMap[e.key]) {
                 e.preventDefault()
                 if (phase === 'idle' || phase === 'dead') {
-                    dispatch({ type: 'RESET' })
+                    dispatch({ type: 'RESET', settings: settingsRef.current })
                     setTimeout(() => dispatch({ type: 'START' }), 10)
+                } else if (phase === 'paused') {
+                    dispatch({ type: 'RESUME' })
                 } else {
                     dispatch({ type: 'STEER', dir: dirMap[e.key] })
                 }
@@ -222,7 +367,11 @@ export default function App() {
             if (e.key === ' ') {
                 e.preventDefault()
                 if (phase === 'idle') dispatch({ type: 'START' })
-                else if (phase === 'dead') { dispatch({ type: 'RESET' }); setTimeout(() => dispatch({ type: 'START' }), 10) }
+                else if (phase === 'paused') dispatch({ type: 'RESUME' })
+                else if (phase === 'dead') {
+                    dispatch({ type: 'RESET', settings: settingsRef.current })
+                    setTimeout(() => dispatch({ type: 'START' }), 10)
+                }
             }
         }
         window.addEventListener('keydown', onKey)
@@ -242,7 +391,10 @@ export default function App() {
             else dir = dy > 0 ? 'DOWN' : 'UP'
             const phase = phaseRef.current
             if (phase === 'idle' || phase === 'dead') {
-                dispatch({ type: 'RESET' }); setTimeout(() => { dispatch({ type: 'START' }); dispatch({ type: 'STEER', dir }) }, 10)
+                dispatch({ type: 'RESET', settings: settingsRef.current })
+                setTimeout(() => { dispatch({ type: 'START' }); dispatch({ type: 'STEER', dir }) }, 10)
+            } else if (phase === 'paused') {
+                dispatch({ type: 'RESUME' })
             } else {
                 dispatch({ type: 'STEER', dir })
             }
@@ -253,13 +405,31 @@ export default function App() {
     }, [])
 
     const handleReset = useCallback(() => {
-        dispatch({ type: 'RESET' })
+        dispatch({ type: 'RESET', settings: settingsRef.current })
         setTimeout(() => dispatch({ type: 'START' }), 10)
     }, [])
 
-    const grid = useMemo(() => buildGrid(state.snake, state.food), [state.snake, state.food])
+    const handleSettingChange = useCallback(<K extends keyof Settings>(key: K, value: Settings[K]) => {
+        const next = { ...settingsRef.current, [key]: value }
+        setSettingsState(next)
+        saveSettings(next)
+    }, [setSettingsState])
+
+    const grid = useMemo(
+        () => buildGrid(state.snake, state.food, state.bonusFood, state.obstacles),
+        [state.snake, state.food, state.bonusFood, state.obstacles],
+    )
     const currentSpeedBest = parseInt(localStorage.getItem(`snake-best-${speed}`) || '0', 10)
     const isSpeedRecord = state.phase === 'running' && state.score > currentSpeedBest
+
+    const activeSettingsCount = [
+        settings.wrapWalls,
+        settings.bonusFood,
+        settings.obstacles !== 'none',
+        settings.countdown > 0,
+        settings.autoRamp,
+        settings.gridLines,
+    ].filter(Boolean).length
 
     return (
         <>
@@ -298,12 +468,17 @@ export default function App() {
                             <ul>
                                 <li>Arrow keys or WASD to steer</li>
                                 <li>Space bar to start / restart</li>
+                                <li><strong>P</strong> or <strong>Esc</strong> to pause / resume</li>
                                 <li>Swipe on mobile</li>
                             </ul>
                         </div>
                         <div className="help-section">
                             <h3>Speed</h3>
                             <p>Choose Slow, Normal, or Fast before or during a game. Higher speed = more challenge.</p>
+                        </div>
+                        <div className="help-section">
+                            <h3>Extras (Settings)</h3>
+                            <p>Use the Settings panel to enable wrap walls, bonus food, obstacles, countdown, auto speed-ramp, and grid lines.</p>
                         </div>
                     </div>
                 </div>
@@ -340,6 +515,95 @@ export default function App() {
                 </div>
             )}
 
+            {/* Settings overlay */}
+            {showSettings && (
+                <div className={`help-overlay${isSettingsClosing ? ' overlay-exit' : ''}`} onClick={closeSettings}>
+                    <div className="help-panel settings-panel" onClick={e => e.stopPropagation()}>
+                        <button className="help-close" onClick={closeSettings} aria-label="Close settings">×</button>
+                        <p className="help-title">Settings</p>
+                        <p className="settings-note">Changes apply on the next new game.</p>
+                        <div className="settings-group">
+                            <div className="settings-row">
+                                <div className="settings-row-text">
+                                    <span className="settings-label">Wrap walls</span>
+                                    <span className="settings-desc">Exit one edge, enter the opposite</span>
+                                </div>
+                                <button className={`toggle-btn${settings.wrapWalls ? ' toggle-on' : ''}`}
+                                    onClick={() => handleSettingChange('wrapWalls', !settings.wrapWalls)}
+                                    aria-pressed={settings.wrapWalls}>
+                                    {settings.wrapWalls ? 'On' : 'Off'}
+                                </button>
+                            </div>
+                            <div className="settings-row">
+                                <div className="settings-row-text">
+                                    <span className="settings-label">Bonus food</span>
+                                    <span className="settings-desc">3-pt item appears every ~8 s, vanishes in 5 s</span>
+                                </div>
+                                <button className={`toggle-btn${settings.bonusFood ? ' toggle-on' : ''}`}
+                                    onClick={() => handleSettingChange('bonusFood', !settings.bonusFood)}
+                                    aria-pressed={settings.bonusFood}>
+                                    {settings.bonusFood ? 'On' : 'Off'}
+                                </button>
+                            </div>
+                            <div className="settings-row settings-row-wide">
+                                <div className="settings-row-text">
+                                    <span className="settings-label">Obstacles</span>
+                                    <span className="settings-desc">Static wall blocks placed on the board</span>
+                                </div>
+                                <div className="segment-ctrl">
+                                    {(['none', 'sparse', 'dense', 'maze'] as ObstaclePreset[]).map(p => (
+                                        <button key={p}
+                                            className={`segment-btn${settings.obstacles === p ? ' segment-active' : ''}`}
+                                            onClick={() => handleSettingChange('obstacles', p)}
+                                            aria-pressed={settings.obstacles === p}>
+                                            {p}
+                                        </button>
+                                    ))}
+                                </div>
+                            </div>
+                            <div className="settings-row settings-row-wide">
+                                <div className="settings-row-text">
+                                    <span className="settings-label">Countdown</span>
+                                    <span className="settings-desc">Time limit — score as many pts as possible</span>
+                                </div>
+                                <div className="segment-ctrl">
+                                    {([0, 60, 90] as const).map(v => (
+                                        <button key={v}
+                                            className={`segment-btn${settings.countdown === v ? ' segment-active' : ''}`}
+                                            onClick={() => handleSettingChange('countdown', v)}
+                                            aria-pressed={settings.countdown === v}>
+                                            {v === 0 ? 'Off' : `${v}s`}
+                                        </button>
+                                    ))}
+                                </div>
+                            </div>
+                            <div className="settings-row">
+                                <div className="settings-row-text">
+                                    <span className="settings-label">Auto speed-ramp</span>
+                                    <span className="settings-desc">Snake speeds up every 10 points</span>
+                                </div>
+                                <button className={`toggle-btn${settings.autoRamp ? ' toggle-on' : ''}`}
+                                    onClick={() => handleSettingChange('autoRamp', !settings.autoRamp)}
+                                    aria-pressed={settings.autoRamp}>
+                                    {settings.autoRamp ? 'On' : 'Off'}
+                                </button>
+                            </div>
+                            <div className="settings-row">
+                                <div className="settings-row-text">
+                                    <span className="settings-label">Grid lines</span>
+                                    <span className="settings-desc">Show cell grid on the board</span>
+                                </div>
+                                <button className={`toggle-btn${settings.gridLines ? ' toggle-on' : ''}`}
+                                    onClick={() => handleSettingChange('gridLines', !settings.gridLines)}
+                                    aria-pressed={settings.gridLines}>
+                                    {settings.gridLines ? 'On' : 'Off'}
+                                </button>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            )}
+
             <div className="container">
                 {/* Header */}
                 <div className="header">
@@ -359,6 +623,12 @@ export default function App() {
                             <div className="score-value">{stats.bestScore}</div>
                             {isSpeedRecord && <span className="speed-record-dot" aria-label="New speed record" />}
                         </div>
+                        {state.timeLeft >= 0 && (
+                            <div className={`score-container${state.timeLeft <= 10 ? ' countdown-urgent' : ''}`}>
+                                <div className="score-label">Time</div>
+                                <div className="score-value">{state.timeLeft}</div>
+                            </div>
+                        )}
                     </div>
                 </div>
 
@@ -367,6 +637,13 @@ export default function App() {
                     <div className="intro-buttons">
                         <button className="restart-button" onClick={handleReset}>Restart</button>
                         <button className="stats-button" onClick={openStats}>Stats</button>
+                        <button
+                            className={`settings-button${activeSettingsCount > 0 ? ' settings-active' : ''}`}
+                            onClick={openSettings}
+                            aria-label={`Settings${activeSettingsCount > 0 ? ` (${activeSettingsCount} active)` : ''}`}
+                        >
+                            Settings{activeSettingsCount > 0 && <span className="settings-badge">{activeSettingsCount}</span>}
+                        </button>
                     </div>
                     {/* Speed selector */}
                     <div className="speed-selector">
@@ -377,27 +654,48 @@ export default function App() {
                                 onClick={() => setSpeed(s)}
                                 aria-pressed={speed === s}
                             >
-                                {s}
+                                {s}{settings.autoRamp && state.phase === 'running' && speed === s && state.speedLevel > 0
+                                    ? <span className="ramp-indicator"> +{state.speedLevel}</span>
+                                    : null}
                             </button>
                         ))}
                     </div>
                 </div>
 
                 {/* Board */}
-                <div className={`game-container${shake ? ' game-over-shake' : ''}`} role="application" aria-label="Snake game board">
+                <div
+                    className={`game-container${shake ? ' game-over-shake' : ''}${settings.gridLines ? ' grid-lines' : ''}`}
+                    role="application"
+                    aria-label="Snake game board"
+                >
                     <div className="grid-canvas">
                         {grid.map((row, y) =>
-                            row.map((cell, x) => (
-                                <div
-                                    key={`${x}-${y}`}
-                                    className={`grid-cell${cell !== 'empty' ? ` cell-${cell === 'head' ? 'snake-head' : cell === 'body' ? 'snake-body' : cell === 'tail' ? 'snake-tail' : 'food'}${cell === 'head' && flashHead ? ' cell-snake-head-flash' : ''}` : ''}`}
-                                />
-                            ))
+                            row.map((cell, x) => {
+                                let cls = 'grid-cell'
+                                if (cell === 'head') cls += ' cell-snake-head' + (flashHead ? ' cell-snake-head-flash' : '')
+                                else if (cell === 'body') cls += ' cell-snake-body'
+                                else if (cell === 'tail') cls += ' cell-snake-tail'
+                                else if (cell === 'food') cls += ' cell-food'
+                                else if (cell === 'bonus') cls += ' cell-bonus'
+                                else if (cell === 'obstacle') cls += ' cell-obstacle'
+                                return <div key={`${x}-${y}`} className={cls} />
+                            })
                         )}
                     </div>
 
+                    {/* Pause overlay */}
+                    {state.phase === 'paused' && (
+                        <div className="game-message">
+                            <p>Paused</p>
+                            <span className="sub-text">P · Esc · Space to resume</span>
+                            <div className="lower">
+                                <button className="retry-button" onClick={() => dispatch({ type: 'RESUME' })}>Resume</button>
+                            </div>
+                        </div>
+                    )}
+
                     {/* Idle / Game over overlay */}
-                    {state.phase !== 'running' && (
+                    {(state.phase === 'idle' || state.phase === 'dead') && (
                         <div className={`game-message${state.phase === 'dead' ? ' game-over' : ''}`}>
                             {state.phase === 'dead' ? (
                                 <>
@@ -440,6 +738,10 @@ function useSpeedState() {
         set(s); localStorage.setItem('snake-speed', s)
     }, [set])
     return [val, setAndPersist] as const
+}
+
+function useSettingsState() {
+    return useSimpleState<Settings>(loadSettings())
 }
 
 function useStatsData() { return useSimpleState<Stats>(loadStats()) }
