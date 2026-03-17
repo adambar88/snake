@@ -137,8 +137,8 @@ export default function App() {
     const [stats, setStats] = useStatsData()
     const [shake, setShake] = useShakeState()
     const [scoreDelta, setScoreDelta] = useScoreDeltaState()
-
-    const tickRef = useRef<ReturnType<typeof setInterval> | null>(null)
+  const [isNewBest, setIsNewBest] = useNewBestState()
+  const tickRef = useRef<ReturnType<typeof setInterval> | null>(null)
     const prevScore = useRef(state.score)
   const phaseRef = useRef(state.phase)
   phaseRef.current = state.phase
@@ -165,6 +165,7 @@ export default function App() {
       setShake(true)
       setTimeout(() => setShake(false), 500)
       const current = loadStats()
+      setIsNewBest(state.score > current.bestScore)
       const next: Stats = {
         gamesPlayed: current.gamesPlayed + 1,
         bestScore: Math.max(current.bestScore, state.score),
@@ -173,9 +174,14 @@ export default function App() {
       setStats(next)
       saveStats(next)
     }
-  }, [state.phase, state.score, setStats])
+  }, [state.phase, state.score, setStats, setIsNewBest])
 
-// Keyboard — stable listener via phaseRef, registered once
+  // Clear new-best badge when a new game starts
+  useEffect(() => {
+    if (state.phase === 'running') setIsNewBest(false)
+  }, [state.phase, setIsNewBest])
+
+  // Keyboard — stable listener via phaseRef, registered once
   useEffect(() => {
     const dirMap: Record<string, Direction> = {
       ArrowUp: 'UP', w: 'UP', W: 'UP',
@@ -378,6 +384,7 @@ export default function App() {
                             {state.phase === 'dead' ? (
                                 <>
                                     <p>Game over</p>
+                                    {isNewBest && <span className="new-best-badge">New best!</span>}
                                     <span className="sub-text">Score: {state.score}</span>
                                     <div className="lower">
                                         <button className="retry-button" onClick={handleReset}>Try again</button>
@@ -422,6 +429,7 @@ function useStatsState() { return useSimpleState(false) }
 function useStatsData() { return useSimpleState<Stats>(loadStats()) }
 function useShakeState() { return useSimpleState(false) }
 function useScoreDeltaState() { return useSimpleState<number | null>(null) }
+function useNewBestState() { return useSimpleState(false) }
 
 function useSimpleState<T>(initial: T) {
     const [val, setVal] = useStateValue(initial)
