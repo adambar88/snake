@@ -69,6 +69,11 @@
   </a>
   <div id="root" role="main"></div>
   <script type="module" src="/src/main.tsx"></script>
+  <script>
+    if ('serviceWorker' in navigator) {
+      window.addEventListener('load', () => navigator.serviceWorker.register('/snake/sw.js'));
+    }
+  </script>
 </body>
 
 </html>
