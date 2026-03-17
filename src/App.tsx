@@ -132,23 +132,29 @@ export default function App() {
     const [state, dispatch] = useReducer(reducer, undefined, initState)
     const [theme, setThemeState] = useThemeState()
     const [speed, setSpeed] = useSpeedState()
-    const [showHelp, setShowHelp] = useHelpState()
-    const [showStats, setShowStats] = useStatsState()
+    const [showHelp, openHelp, isHelpClosing, closeHelp] = useClosableOverlay()
+    const [showStats, openStats, isStatsClosing, closeStats] = useClosableOverlay()
     const [stats, setStats] = useStatsData()
     const [shake, setShake] = useShakeState()
     const [scoreDelta, setScoreDelta] = useScoreDeltaState()
-  const [isNewBest, setIsNewBest] = useNewBestState()
-  const tickRef = useRef<ReturnType<typeof setInterval> | null>(null)
+    const [isNewBest, setIsNewBest] = useNewBestState()
+    const [flashHead, setFlashHead] = useFlashHeadState()
+    const [speedRecords, setSpeedRecords] = useSpeedRecordsState()
+    const tickRef = useRef<ReturnType<typeof setInterval> | null>(null)
     const prevScore = useRef(state.score)
-  const phaseRef = useRef(state.phase)
-  phaseRef.current = state.phase
+    const phaseRef = useRef(state.phase)
+    phaseRef.current = state.phase
+    const speedRef = useRef(speed)
+    speedRef.current = speed
     useEffect(() => {
         if (state.score > prevScore.current) {
             setScoreDelta(state.score - prevScore.current)
             setTimeout(() => setScoreDelta(null), 800)
+            setFlashHead(true)
+            setTimeout(() => setFlashHead(false), 200)
         }
         prevScore.current = state.score
-    }, [state.score, setScoreDelta])
+    }, [state.score, setScoreDelta, setFlashHead])
 
     // Game tick
     useEffect(() => {
@@ -159,79 +165,92 @@ export default function App() {
         if (tickRef.current) clearInterval(tickRef.current)
     }, [state.phase, speed])
 
-// Save stats on death — read fresh from localStorage to avoid stale closure
-  useEffect(() => {
-    if (state.phase === 'dead') {
-      setShake(true)
-      setTimeout(() => setShake(false), 500)
-      const current = loadStats()
-      setIsNewBest(state.score > current.bestScore)
-      const next: Stats = {
-        gamesPlayed: current.gamesPlayed + 1,
-        bestScore: Math.max(current.bestScore, state.score),
-        totalFood: current.totalFood + state.score,
-      }
-      setStats(next)
-      saveStats(next)
-    }
-  }, [state.phase, state.score, setStats, setIsNewBest])
-
-  // Clear new-best badge when a new game starts
-  useEffect(() => {
-    if (state.phase === 'running') setIsNewBest(false)
-  }, [state.phase, setIsNewBest])
-
-  // Keyboard — stable listener via phaseRef, registered once
-  useEffect(() => {
-    const dirMap: Record<string, Direction> = {
-      ArrowUp: 'UP', w: 'UP', W: 'UP',
-      ArrowDown: 'DOWN', s: 'DOWN', S: 'DOWN',
-      ArrowLeft: 'LEFT', a: 'LEFT', A: 'LEFT',
-      ArrowRight: 'RIGHT', d: 'RIGHT', D: 'RIGHT',
-    }
-    const onKey = (e: KeyboardEvent) => {
-      const phase = phaseRef.current
-      if (dirMap[e.key]) {
-        e.preventDefault()
-        if (phase === 'idle' || phase === 'dead') {
-          dispatch({ type: 'RESET' })
-          setTimeout(() => dispatch({ type: 'START' }), 10)
-        } else {
-          dispatch({ type: 'STEER', dir: dirMap[e.key] })
+    // Save stats on death — read fresh from localStorage to avoid stale closure
+    useEffect(() => {
+        if (state.phase === 'dead') {
+            setShake(true)
+            setTimeout(() => setShake(false), 500)
+            const current = loadStats()
+            setIsNewBest(state.score > current.bestScore)
+            const next: Stats = {
+                gamesPlayed: current.gamesPlayed + 1,
+                bestScore: Math.max(current.bestScore, state.score),
+                totalFood: current.totalFood + state.score,
+            }
+            setStats(next)
+            saveStats(next)
+            // Update per-speed best record
+            const speedKey = `snake-best-${speedRef.current}`
+            const prevBest = parseInt(localStorage.getItem(speedKey) || '0', 10)
+            if (state.score > prevBest) localStorage.setItem(speedKey, String(state.score))
         }
-      }
-      if (e.key === ' ') {
-        e.preventDefault()
-        if (phase === 'idle') dispatch({ type: 'START' })
-        else if (phase === 'dead') { dispatch({ type: 'RESET' }); setTimeout(() => dispatch({ type: 'START' }), 10) }
-      }
-    }
-    window.addEventListener('keydown', onKey)
-    return () => window.removeEventListener('keydown', onKey)
-  }, [])
+    }, [state.phase, state.score, setStats, setIsNewBest])
 
-// Touch swipe — stable listener via phaseRef, registered once
-  useEffect(() => {
-    let sx = 0, sy = 0
-    const onStart = (e: TouchEvent) => { sx = e.touches[0].clientX; sy = e.touches[0].clientY }
-    const onEnd = (e: TouchEvent) => {
-      const dx = e.changedTouches[0].clientX - sx
-      const dy = e.changedTouches[0].clientY - sy
-      if (Math.abs(dx) < 30 && Math.abs(dy) < 30) return
-      let dir: Direction
-      if (Math.abs(dx) > Math.abs(dy)) dir = dx > 0 ? 'RIGHT' : 'LEFT'
-      else dir = dy > 0 ? 'DOWN' : 'UP'
-      const phase = phaseRef.current
-      if (phase === 'idle' || phase === 'dead') {
-        dispatch({ type: 'RESET' }); setTimeout(() => { dispatch({ type: 'START' }); dispatch({ type: 'STEER', dir }) }, 10)
-      } else {
-        dispatch({ type: 'STEER', dir })
-      }
-    }
-    window.addEventListener('touchstart', onStart, { passive: true })
-    window.addEventListener('touchend', onEnd, { passive: true })
-    return () => { window.removeEventListener('touchstart', onStart); window.removeEventListener('touchend', onEnd) }
-  }, [])
+    // Clear new-best badge when a new game starts
+    useEffect(() => {
+        if (state.phase === 'running') setIsNewBest(false)
+    }, [state.phase, setIsNewBest])
+
+    // Snapshot localStorage speed records when stats overlay opens
+    useEffect(() => {
+        if (showStats) setSpeedRecords({
+            slow:   parseInt(localStorage.getItem('snake-best-slow')   || '0', 10),
+            normal: parseInt(localStorage.getItem('snake-best-normal') || '0', 10),
+            fast:   parseInt(localStorage.getItem('snake-best-fast')   || '0', 10),
+        })
+    }, [showStats, setSpeedRecords])
+
+    // Keyboard — stable listener via phaseRef, registered once
+    useEffect(() => {
+        const dirMap: Record<string, Direction> = {
+            ArrowUp: 'UP', w: 'UP', W: 'UP',
+            ArrowDown: 'DOWN', s: 'DOWN', S: 'DOWN',
+            ArrowLeft: 'LEFT', a: 'LEFT', A: 'LEFT',
+            ArrowRight: 'RIGHT', d: 'RIGHT', D: 'RIGHT',
+        }
+        const onKey = (e: KeyboardEvent) => {
+            const phase = phaseRef.current
+            if (dirMap[e.key]) {
+                e.preventDefault()
+                if (phase === 'idle' || phase === 'dead') {
+                    dispatch({ type: 'RESET' })
+                    setTimeout(() => dispatch({ type: 'START' }), 10)
+                } else {
+                    dispatch({ type: 'STEER', dir: dirMap[e.key] })
+                }
+            }
+            if (e.key === ' ') {
+                e.preventDefault()
+                if (phase === 'idle') dispatch({ type: 'START' })
+                else if (phase === 'dead') { dispatch({ type: 'RESET' }); setTimeout(() => dispatch({ type: 'START' }), 10) }
+            }
+        }
+        window.addEventListener('keydown', onKey)
+        return () => window.removeEventListener('keydown', onKey)
+    }, [])
+
+    // Touch swipe — stable listener via phaseRef, registered once
+    useEffect(() => {
+        let sx = 0, sy = 0
+        const onStart = (e: TouchEvent) => { sx = e.touches[0].clientX; sy = e.touches[0].clientY }
+        const onEnd = (e: TouchEvent) => {
+            const dx = e.changedTouches[0].clientX - sx
+            const dy = e.changedTouches[0].clientY - sy
+            if (Math.abs(dx) < 30 && Math.abs(dy) < 30) return
+            let dir: Direction
+            if (Math.abs(dx) > Math.abs(dy)) dir = dx > 0 ? 'RIGHT' : 'LEFT'
+            else dir = dy > 0 ? 'DOWN' : 'UP'
+            const phase = phaseRef.current
+            if (phase === 'idle' || phase === 'dead') {
+                dispatch({ type: 'RESET' }); setTimeout(() => { dispatch({ type: 'START' }); dispatch({ type: 'STEER', dir }) }, 10)
+            } else {
+                dispatch({ type: 'STEER', dir })
+            }
+        }
+        window.addEventListener('touchstart', onStart, { passive: true })
+        window.addEventListener('touchend', onEnd, { passive: true })
+        return () => { window.removeEventListener('touchstart', onStart); window.removeEventListener('touchend', onEnd) }
+    }, [])
 
     const handleReset = useCallback(() => {
         dispatch({ type: 'RESET' })
@@ -264,9 +283,9 @@ export default function App() {
 
             {/* Help overlay */}
             {showHelp && (
-                <div className="help-overlay" onClick={() => setShowHelp(false)}>
+                <div className={`help-overlay${isHelpClosing ? ' overlay-exit' : ''}`} onClick={closeHelp}>
                     <div className="help-panel" onClick={e => e.stopPropagation()}>
-                        <button className="help-close" onClick={() => setShowHelp(false)} aria-label="Close help">×</button>
+                        <button className="help-close" onClick={closeHelp} aria-label="Close help">×</button>
                         <p className="help-title">How to play</p>
                         <div className="help-section">
                             <h3>Basics</h3>
@@ -290,9 +309,9 @@ export default function App() {
 
             {/* Stats overlay */}
             {showStats && (
-                <div className="help-overlay" onClick={() => setShowStats(false)}>
+                <div className={`help-overlay${isStatsClosing ? ' overlay-exit' : ''}`} onClick={closeStats}>
                     <div className="help-panel" onClick={e => e.stopPropagation()}>
-                        <button className="help-close" onClick={() => setShowStats(false)} aria-label="Close stats">×</button>
+                        <button className="help-close" onClick={closeStats} aria-label="Close stats">×</button>
                         <p className="help-title">Statistics</p>
                         <div className="stats-row">
                             <div className="stat-item">
@@ -309,16 +328,12 @@ export default function App() {
                             </div>
                         </div>
                         <p className="leaderboard-title">Speed records</p>
-                        {(['slow', 'normal', 'fast'] as Speed[]).map(s => {
-                            const key = `snake-best-${s}`
-                            const val = parseInt(localStorage.getItem(key) || '0', 10)
-                            return (
-                                <div className="leaderboard-row" key={s}>
-                                    <span className="leaderboard-label">{s.charAt(0).toUpperCase() + s.slice(1)}</span>
-                                    <span className="leaderboard-score">{val}</span>
-                                </div>
-                            )
-                        })}
+                        {(['slow', 'normal', 'fast'] as Speed[]).map(s => (
+                            <div className="leaderboard-row" key={s}>
+                                <span className="leaderboard-label">{s.charAt(0).toUpperCase() + s.slice(1)}</span>
+                                <span className="leaderboard-score">{speedRecords[s]}</span>
+                            </div>
+                        ))}
                     </div>
                 </div>
             )}
@@ -327,7 +342,7 @@ export default function App() {
                 {/* Header */}
                 <div className="header">
                     <h1>snake</h1>
-                    <button className="help-btn" onClick={() => setShowHelp(true)} aria-label="How to play">
+                    <button className="help-btn" onClick={openHelp} aria-label="How to play">
                         <span className="help-btn-icon">?</span>
                         <span className="help-btn-label">How to play</span>
                     </button>
@@ -348,7 +363,7 @@ export default function App() {
                 <div className="game-intro">
                     <div className="intro-buttons">
                         <button className="restart-button" onClick={handleReset}>Restart</button>
-                        <button className="stats-button" onClick={() => setShowStats(true)}>Stats</button>
+                        <button className="stats-button" onClick={openStats}>Stats</button>
                     </div>
                     {/* Speed selector */}
                     <div className="speed-selector">
@@ -372,7 +387,7 @@ export default function App() {
                             row.map((cell, x) => (
                                 <div
                                     key={`${x}-${y}`}
-                                    className={`grid-cell${cell !== 'empty' ? ` cell-${cell === 'head' ? 'snake-head' : cell === 'body' ? 'snake-body' : cell === 'tail' ? 'snake-tail' : 'food'}` : ''}`}
+                                    className={`grid-cell${cell !== 'empty' ? ` cell-${cell === 'head' ? 'snake-head' : cell === 'body' ? 'snake-body' : cell === 'tail' ? 'snake-tail' : 'food'}${cell === 'head' && flashHead ? ' cell-snake-head-flash' : ''}` : ''}`}
                                 />
                             ))
                         )}
@@ -424,12 +439,27 @@ function useSpeedState() {
     return [val, setAndPersist] as const
 }
 
-function useHelpState() { return useSimpleState(false) }
-function useStatsState() { return useSimpleState(false) }
 function useStatsData() { return useSimpleState<Stats>(loadStats()) }
 function useShakeState() { return useSimpleState(false) }
 function useScoreDeltaState() { return useSimpleState<number | null>(null) }
 function useNewBestState() { return useSimpleState(false) }
+function useFlashHeadState() { return useSimpleState(false) }
+function useSpeedRecordsState() { return useSimpleState<Record<Speed, number>>({ slow: 0, normal: 0, fast: 0 }) }
+
+function useClosableOverlay() {
+    const [visible, setVisible] = useSimpleState(false)
+    const [closing, setClosing] = useSimpleState(false)
+    const close = useCallback(() => {
+        if (window.matchMedia('(prefers-reduced-motion: reduce)').matches) {
+            setVisible(false)
+            return
+        }
+        setClosing(true)
+        setTimeout(() => { setVisible(false); setClosing(false) }, 180)
+    }, [setVisible, setClosing])
+    const open = useCallback(() => setVisible(true), [setVisible])
+    return [visible, open, closing, close] as const
+}
 
 function useSimpleState<T>(initial: T) {
     const [val, setVal] = useStateValue(initial)
