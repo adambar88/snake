@@ -42,20 +42,54 @@
       z-index: 999;
       transition: color 0.15s;
     }
-    .back-link:hover { color: #fff; }
-    [data-theme="light"] .back-link:hover { color: #1a1410; }
+
+    .back-link:hover {
+      color: #fff;
+    }
+
+    [data-theme="light"] .back-link:hover {
+      color: #1a1410;
+    }
+
     :focus-visible {
       outline: 2px solid #767676;
       outline-offset: 2px;
       border-radius: 4px;
     }
-    ::selection { background: rgba(255, 255, 255, 0.18); }
-    [data-theme="light"] ::selection { background: rgba(0, 0, 0, 0.12); }
-    @view-transition { navigation: auto; }
-    ::view-transition-old(root) { animation: vt-out 0.18s ease-out forwards; }
-    ::view-transition-new(root) { animation: vt-in 0.22s ease-out forwards; }
-    @keyframes vt-out { to { opacity: 0; transform: translateY(6px) scale(0.99); } }
-    @keyframes vt-in  { from { opacity: 0; transform: translateY(-6px) scale(1.01); } }
+
+    ::selection {
+      background: rgba(255, 255, 255, 0.18);
+    }
+
+    [data-theme="light"] ::selection {
+      background: rgba(0, 0, 0, 0.12);
+    }
+
+    @view-transition {
+      navigation: auto;
+    }
+
+    ::view-transition-old(root) {
+      animation: vt-out 0.18s ease-out forwards;
+    }
+
+    ::view-transition-new(root) {
+      animation: vt-in 0.22s ease-out forwards;
+    }
+
+    @keyframes vt-out {
+      to {
+        opacity: 0;
+        transform: translateY(6px) scale(0.99);
+      }
+    }
+
+    @keyframes vt-in {
+      from {
+        opacity: 0;
+        transform: translateY(-6px) scale(1.01);
+      }
+    }
   </style>
 </head>
 
