@@ -642,7 +642,7 @@ export default function App() {
                             onClick={openSettings}
                             aria-label={`Settings${activeSettingsCount > 0 ? ` (${activeSettingsCount} active)` : ''}`}
                         >
-                            Settings{activeSettingsCount > 0 && <span className="settings-badge">{activeSettingsCount}</span>}
+                            SETTINGS{activeSettingsCount > 0 && <span className="settings-badge">{activeSettingsCount}</span>}
                         </button>
                     </div>
                     {/* Speed selector */}

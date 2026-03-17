@@ -509,6 +509,10 @@ h1 {
 
 .settings-button {
     position: relative;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    gap: 0;
 }
 
 .settings-badge {
@@ -540,6 +544,7 @@ h1 {
 
 .stats-button,
 .restart-button,
+.settings-button,
 .speed-button {
     flex: 1;
     background: none;
@@ -563,12 +568,14 @@ h1 {
 
 .stats-button:hover,
 .restart-button:hover,
+.settings-button:hover,
 .speed-button:hover {
     color: var(--text);
 }
 
 .stats-button:active,
 .restart-button:active,
+.settings-button:active,
 .speed-button:active {
     opacity: 0.7;
 }
