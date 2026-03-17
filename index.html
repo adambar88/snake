@@ -1,0 +1,74 @@
+<!doctype html>
+<html lang="en">
+
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Snake — barczynski.dev</title>
+  <meta name="description"
+    content="Minimalistic snake game. Eat food, grow longer, don't hit the walls. Built with React.">
+  <meta property="og:type" content="website">
+  <meta property="og:url" content="https://apps.barczynski.dev/snake">
+  <meta property="og:title" content="Snake — barczynski.dev">
+  <meta property="og:description"
+    content="Minimalistic snake game. Eat food, grow longer, don't hit the walls. Built with React.">
+  <meta name="twitter:card" content="summary">
+  <meta name="twitter:title" content="Snake — barczynski.dev">
+  <meta name="twitter:description"
+    content="Minimalistic snake game. Eat food, grow longer, don't hit the walls. Built with React.">
+  <link rel="icon" type="image/svg+xml" href="./favicon.svg">
+  <link rel="manifest" href="./manifest.json">
+  <meta name="theme-color" content="#050505">
+  <meta name="apple-mobile-web-app-capable" content="yes">
+  <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+  <meta name="apple-mobile-web-app-title" content="Snake">
+  <link rel="apple-touch-icon" href="./favicon.svg">
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@300;400;500;600;700&display=swap"
+    rel="stylesheet">
+  <style>
+    .back-link {
+      position: fixed;
+      top: 16px;
+      left: 16px;
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      text-decoration: none;
+      color: #767676;
+      font-family: 'Space Grotesk', sans-serif;
+      font-size: 12px;
+      z-index: 999;
+      transition: color 0.15s;
+    }
+    .back-link:hover { color: #fff; }
+    [data-theme="light"] .back-link:hover { color: #1a1410; }
+    :focus-visible {
+      outline: 2px solid #767676;
+      outline-offset: 2px;
+      border-radius: 4px;
+    }
+    ::selection { background: rgba(255, 255, 255, 0.18); }
+    [data-theme="light"] ::selection { background: rgba(0, 0, 0, 0.12); }
+    @view-transition { navigation: auto; }
+    ::view-transition-old(root) { animation: vt-out 0.18s ease-out forwards; }
+    ::view-transition-new(root) { animation: vt-in 0.22s ease-out forwards; }
+    @keyframes vt-out { to { opacity: 0; transform: translateY(6px) scale(0.99); } }
+    @keyframes vt-in  { from { opacity: 0; transform: translateY(-6px) scale(1.01); } }
+  </style>
+</head>
+
+<body>
+  <a href="/apps/" class="back-link">
+    <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5"
+      stroke-linecap="round" stroke-linejoin="round">
+      <path d="M19 12H5M12 5l-7 7 7 7" />
+    </svg>
+    apps.barczynski.dev
+  </a>
+  <div id="root" role="main"></div>
+  <script type="module" src="/src/main.tsx"></script>
+</body>
+
+</html>

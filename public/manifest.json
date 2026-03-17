@@ -1,0 +1,27 @@
+{
+  "name": "Snake — barczynski.dev",
+  "short_name": "Snake",
+  "description": "Minimalistic snake game. Eat food, grow longer, don't hit the walls or yourself.",
+  "start_url": "/snake/",
+  "scope": "/snake/",
+  "display": "standalone",
+  "background_color": "#050505",
+  "theme_color": "#050505",
+  "orientation": "portrait-primary",
+  "categories": ["games"],
+  "icons": [
+    {
+      "src": "/snake/favicon.svg",
+      "sizes": "any",
+      "type": "image/svg+xml",
+      "purpose": "any maskable"
+    }
+  ],
+  "shortcuts": [
+    {
+      "name": "Play Snake",
+      "url": "/snake/",
+      "description": "Start a new game"
+    }
+  ]
+}
