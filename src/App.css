@@ -205,6 +205,13 @@ h1 {
 /* ── Food ─────────────────────────────────────────────── */
 
 .cell-food {
+    position: relative;
+}
+
+.cell-food::after {
+    content: '';
+    position: absolute;
+    inset: 0;
     background: var(--food);
     border-radius: 50%;
     box-shadow: 0 0 8px var(--food-glow);
@@ -301,6 +308,32 @@ h1 {
     color: var(--text);
 }
 
+.new-best-badge {
+    display: inline-block;
+    font-size: 11px;
+    font-weight: 600;
+    letter-spacing: 0.08em;
+    text-transform: uppercase;
+    color: var(--text);
+    border: 1px solid currentColor;
+    border-radius: 4px;
+    padding: 3px 8px;
+    margin-bottom: 10px;
+    animation: badge-pop 300ms cubic-bezier(0.22, 1, 0.36, 1) both;
+}
+
+@keyframes badge-pop {
+    from {
+        opacity: 0;
+        transform: scale(0.8);
+    }
+
+    to {
+        opacity: 1;
+        transform: scale(1);
+    }
+}
+
 .sub-text {
     display: block;
     font-size: 14px;
@@ -393,7 +426,8 @@ h1 {
     letter-spacing: 0.06em;
     text-transform: uppercase;
     padding: 0 8px;
-    height: 36px;
+    min-height: 44px;
+    height: 44px;
     cursor: pointer;
     transition: color 150ms;
     line-height: 1;
@@ -438,7 +472,8 @@ h1 {
     font-family: inherit;
     letter-spacing: 0.06em;
     text-transform: uppercase;
-    height: 36px;
+    min-height: 44px;
+    height: 44px;
     padding: 0 6px;
     cursor: pointer;
     transition: color 150ms;
@@ -518,7 +553,7 @@ h1 {
     width: 100%;
     max-height: 85vh;
     overflow-y: auto;
-    animation: panel-in 200ms cubic-bezier(0.34, 1.4, 0.64, 1);
+    animation: panel-in 200ms cubic-bezier(0.22, 1, 0.36, 1);
 }
 
 @keyframes panel-in {
@@ -714,8 +749,26 @@ h1 {
     .speed-button {
         font-size: 11px;
         padding: 0 6px;
-        height: 32px;
     }
+}
+
+/* ── Reduced motion ───────────────────────────────────── */
+
+@media (prefers-reduced-motion: reduce) {
+    .cell-food::after {
+        animation: none;
+        opacity: 1;
+        transform: scale(0.87);
+    }
+
+    .game-over-shake { animation: none; }
+
+    .game-message,
+    .help-overlay,
+    .help-panel,
+    .new-best-badge { animation: none; }
+
+    .score-delta { animation: none; opacity: 0; }
 }
 
 /* ── Reduced motion ───────────────────────────────────── */
