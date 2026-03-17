@@ -318,6 +318,10 @@ export default function App() {
         {/* Header */}
         <div className="header">
           <h1>snake</h1>
+          <button className="help-btn" onClick={() => setShowHelp(true)} aria-label="How to play">
+            <span className="help-btn-icon">?</span>
+            <span className="help-btn-label">How to play</span>
+          </button>
           <div className="scores-wrapper">
             <div className="score-container">
               <div className="score-label">Score</div>
@@ -333,13 +337,8 @@ export default function App() {
 
         {/* Sub-header */}
         <div className="game-intro">
-          <p className="game-explanation">Eat food, grow longer. Don't hit the walls or yourself.</p>
           <div className="intro-buttons">
             <button className="restart-button" onClick={handleReset}>Restart</button>
-            <button className="help-btn" onClick={() => setShowHelp(true)} aria-label="How to play">
-              <span className="help-btn-icon">?</span>
-              <span className="help-btn-label">Help</span>
-            </button>
             <button className="stats-button" onClick={() => setShowStats(true)}>Stats</button>
           </div>
           {/* Speed selector */}
