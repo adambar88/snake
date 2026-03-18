@@ -1,4 +1,4 @@
-const CACHE = 'snake-v2';
+const CACHE = 'snake-v3';
 
 self.addEventListener('install', e => {
     e.waitUntil(
@@ -19,6 +19,7 @@ self.addEventListener('activate', e => {
 self.addEventListener('fetch', e => {
     if (e.request.method !== 'GET') return;
     const url = new URL(e.request.url);
+    if (url.origin !== self.location.origin) return;
     if (!url.pathname.startsWith('/snake/')) return;
     e.respondWith(
         caches.match(e.request).then(cached => {
