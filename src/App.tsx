@@ -378,30 +378,18 @@ export default function App() {
         return () => window.removeEventListener('keydown', onKey)
     }, [])
 
-    // Touch swipe + double-tap to pause — stable listener via phaseRef, registered once
+    // Touch swipe — stable listener via phaseRef, registered once
     useEffect(() => {
         let sx = 0, sy = 0
-        let lastTap = 0
         const onStart = (e: TouchEvent) => { sx = e.touches[0].clientX; sy = e.touches[0].clientY }
         const onEnd = (e: TouchEvent) => {
             const dx = e.changedTouches[0].clientX - sx
             const dy = e.changedTouches[0].clientY - sy
-            const phase = phaseRef.current
-            // Double-tap: two taps within 300ms with < 30px movement
-            if (Math.abs(dx) < 30 && Math.abs(dy) < 30) {
-                const now = Date.now()
-                if (now - lastTap < 300) {
-                    if (phase === 'running') dispatch({ type: 'PAUSE' })
-                    else if (phase === 'paused') dispatch({ type: 'RESUME' })
-                    lastTap = 0
-                } else {
-                    lastTap = now
-                }
-                return
-            }
+            if (Math.abs(dx) < 30 && Math.abs(dy) < 30) return
             let dir: Direction
             if (Math.abs(dx) > Math.abs(dy)) dir = dx > 0 ? 'RIGHT' : 'LEFT'
             else dir = dy > 0 ? 'DOWN' : 'UP'
+            const phase = phaseRef.current
             if (phase === 'idle' || phase === 'dead') {
                 dispatch({ type: 'RESET', settings: settingsRef.current })
                 setTimeout(() => { dispatch({ type: 'START' }); dispatch({ type: 'STEER', dir }) }, 10)
@@ -481,7 +469,7 @@ export default function App() {
                                 <li>Arrow keys or WASD to steer</li>
                                 <li>Space bar to start / restart</li>
                                 <li><strong>P</strong> or <strong>Esc</strong> to pause / resume</li>
-                                <li>Swipe on mobile — double-tap to pause</li>
+                                <li>Swipe on mobile</li>
                             </ul>
                         </div>
                         <div className="help-section">
