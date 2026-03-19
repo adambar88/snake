@@ -637,6 +637,15 @@ export default function App() {
                     <div className="intro-buttons">
                         <button className="restart-button" onClick={handleReset}>Restart</button>
                         <button className="stats-button" onClick={openStats}>Stats</button>
+                        {(state.phase === 'running' || state.phase === 'paused') && (
+                            <button
+                                className="stats-button pause-button-mobile"
+                                onClick={() => dispatch({ type: state.phase === 'paused' ? 'RESUME' : 'PAUSE' })}
+                                aria-label={state.phase === 'paused' ? 'Resume' : 'Pause'}
+                            >
+                                {state.phase === 'paused' ? 'Resume' : 'Pause'}
+                            </button>
+                        )}
                         <button
                             className={`settings-button${activeSettingsCount > 0 ? ' settings-active' : ''}`}
                             onClick={openSettings}
