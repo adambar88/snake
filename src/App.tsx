@@ -637,15 +637,6 @@ export default function App() {
                     <div className="intro-buttons">
                         <button className="restart-button" onClick={handleReset}>Restart</button>
                         <button className="stats-button" onClick={openStats}>Stats</button>
-                        {(state.phase === 'running' || state.phase === 'paused') && (
-                            <button
-                                className="stats-button pause-button-mobile"
-                                onClick={() => dispatch({ type: state.phase === 'paused' ? 'RESUME' : 'PAUSE' })}
-                                aria-label={state.phase === 'paused' ? 'Resume' : 'Pause'}
-                            >
-                                {state.phase === 'paused' ? 'Resume' : 'Pause'}
-                            </button>
-                        )}
                         <button
                             className={`settings-button${activeSettingsCount > 0 ? ' settings-active' : ''}`}
                             onClick={openSettings}
@@ -676,6 +667,10 @@ export default function App() {
                     className={`game-container${shake ? ' game-over-shake' : ''}${settings.gridLines ? ' grid-lines' : ''}`}
                     role="application"
                     aria-label="Snake game board"
+                    onDoubleClick={() => {
+                        if (state.phase === 'running') dispatch({ type: 'PAUSE' })
+                        else if (state.phase === 'paused') dispatch({ type: 'RESUME' })
+                    }}
                 >
                     <div className="grid-canvas">
                         {grid.map((row, y) =>
@@ -696,7 +691,7 @@ export default function App() {
                     {state.phase === 'paused' && (
                         <div className="game-message">
                             <p>Paused</p>
-                            <span className="sub-text">P · Esc · Space to resume</span>
+                            <span className="sub-text">P · Esc · Space · double-click to resume</span>
                             <div className="lower">
                                 <button className="retry-button" onClick={() => dispatch({ type: 'RESUME' })}>Resume</button>
                             </div>

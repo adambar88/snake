@@ -998,13 +998,6 @@ h1 {
 
 /* ── Responsive ───────────────────────────────────────── */
 
-/* Hide pause button on devices with a keyboard (hover capable) */
-@media (hover: hover) {
-    .pause-button-mobile {
-        display: none;
-    }
-}
-
 @media (max-width: 520px) {
     .container {
         padding: 10px 0 16px;
