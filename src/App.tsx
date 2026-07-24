@@ -820,6 +820,15 @@ export default function App() {
                     </div>
                 </div>
 
+                {/* Active Powerup Bar (Permanently reserved space: zero layout shift & zero board overlap) */}
+                <div className="active-powerup-bar">
+                    {state.activePowerUp && (
+                        <span className={`active-powerup-badge badge-${state.activePowerUp.type}`}>
+                            ⚡ {state.activePowerUp.type.toUpperCase()} MODE
+                        </span>
+                    )}
+                </div>
+
                 {/* Sub-header */}
                 <div className="game-intro">
                     <div className="intro-buttons">
@@ -859,14 +868,7 @@ export default function App() {
                         else if (state.phase === 'paused') dispatch({ type: 'RESUME' })
                     }}
                 >
-                    {/* Floating Active Powerup Badge (zero layout shift) */}
-                    {state.activePowerUp && (
-                        <div className="active-powerup-overlay">
-                            <span className={`active-powerup-badge badge-${state.activePowerUp.type}`}>
-                                ⚡ {state.activePowerUp.type.toUpperCase()} MODE
-                            </span>
-                        </div>
-                    )}
+
 
                     {/* Particles layer */}
                     <div className="particle-layer">

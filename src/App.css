@@ -1199,15 +1199,14 @@ h1 {
     100% { transform: scale(1.1); opacity: 1; }
 }
 
-/* Active Power-up Badge Overlay (Floating over board - zero layout shift) */
+/* Active Power-up Bar (Permanently reserved height - zero layout shift & zero board overlap) */
 
-.active-powerup-overlay {
-    position: absolute;
-    top: 10px;
-    left: 50%;
-    transform: translateX(-50%);
-    z-index: 10;
-    pointer-events: none;
+.active-powerup-bar {
+    height: 28px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    margin-bottom: 8px;
 }
 
 .active-powerup-badge {
@@ -1220,10 +1219,9 @@ h1 {
     font-weight: 700;
     letter-spacing: 0.5px;
     text-transform: uppercase;
-    background: rgba(13, 13, 13, 0.88);
-    backdrop-filter: blur(4px);
+    background: rgba(255, 255, 255, 0.1);
     border: 1px solid currentColor;
-    box-shadow: 0 4px 12px rgba(0, 0, 0, 0.35);
+    box-shadow: 0 2px 8px rgba(0, 0, 0, 0.2);
     animation: badgePop 0.3s ease-out;
 }
 
@@ -1231,6 +1229,7 @@ h1 {
 .badge-slow { color: #60a5fa; border-color: #3b82f6; }
 .badge-shrink { color: #f472b6; border-color: #ec4899; }
 .badge-golden { color: #facc15; border-color: #eab308; }
+
 
 @keyframes badgePop {
     0% { transform: scale(0.8); opacity: 0; }
