@@ -7,13 +7,14 @@ import {
     isDead, placeFood, oppositeDir, generateObstacles, getRandomPowerUpType,
 } from './gameLogic'
 import {
-    playEatSound, playBonusSound, playPowerUpSound, playDeathSound, playHighScoreSound,
+    playEatSound, playBonusSound, playPowerUpSound, playDeathSound, playHighScoreSound, triggerHaptic,
 } from './sound'
 import { createParticleBurst, updateParticles, type Particle } from './particles'
 
 // ── Types ──────────────────────────────────────────────
 
 type Speed = 'slow' | 'normal' | 'fast'
+export type ControlMode = 'touch' | 'buttons' | 'both'
 
 interface Stats {
     gamesPlayed: number
@@ -29,6 +30,7 @@ interface Settings {
     theme: VisualTheme
     skin: SnakeSkin
     obstacles: ObstaclePreset
+    controls: ControlMode
     countdown: 0 | 60 | 90
     autoRamp: boolean
     gridLines: boolean
@@ -42,6 +44,7 @@ const DEFAULT_SETTINGS: Settings = {
     theme: 'modern',
     skin: 'classic',
     obstacles: 'none',
+    controls: 'both',
     countdown: 0,
     autoRamp: false,
     gridLines: false,
@@ -565,12 +568,14 @@ export default function App() {
         const onStart = (e: TouchEvent) => { sx = e.touches[0].clientX; sy = e.touches[0].clientY }
         const onEnd = (e: TouchEvent) => {
             if (overlaysOpenRef.current) return
+            if (settingsRef.current.controls === 'buttons') return
             const dx = e.changedTouches[0].clientX - sx
             const dy = e.changedTouches[0].clientY - sy
             if (Math.abs(dx) < 30 && Math.abs(dy) < 30) return
             let dir: Direction
             if (Math.abs(dx) > Math.abs(dy)) dir = dx > 0 ? 'RIGHT' : 'LEFT'
             else dir = dy > 0 ? 'DOWN' : 'UP'
+            triggerHaptic(14)
             const phase = phaseRef.current
             if (phase === 'idle' || phase === 'dead') {
                 dispatch({ type: 'RESET', settings: settingsRef.current })
@@ -600,6 +605,7 @@ export default function App() {
 
     const handleSteer = useCallback((dir: Direction) => {
         if (overlaysOpenRef.current) return
+        triggerHaptic(14)
         const phase = phaseRef.current
         if (phase === 'idle' || phase === 'dead') {
             dispatch({ type: 'RESET', settings: settingsRef.current })
@@ -614,6 +620,7 @@ export default function App() {
             dispatch({ type: 'STEER', dir })
         }
     }, [])
+
 
 
     const handleSettingChange = useCallback(<K extends keyof Settings>(key: K, value: Settings[K]) => {
@@ -764,9 +771,26 @@ export default function App() {
                             </div>
                             <div className="settings-row settings-row-wide">
                                 <div className="settings-row-text">
+                                    <span className="settings-label">Controls</span>
+                                    <span className="settings-desc">Touch Swipe, On-Screen D-Pad, or Both</span>
+                                </div>
+                                <div className="segment-ctrl">
+                                    {(['touch', 'buttons', 'both'] as ControlMode[]).map(ctrl => (
+                                        <button key={ctrl}
+                                            className={`segment-btn${settings.controls === ctrl ? ' segment-active' : ''}`}
+                                            onClick={() => handleSettingChange('controls', ctrl)}
+                                            aria-pressed={settings.controls === ctrl}>
+                                            {ctrl === 'touch' ? 'Touch Only' : ctrl === 'buttons' ? 'D-Pad Only' : 'Both'}
+                                        </button>
+                                    ))}
+                                </div>
+                            </div>
+                            <div className="settings-row settings-row-wide">
+                                <div className="settings-row-text">
                                     <span className="settings-label">Snake Skin</span>
                                     <span className="settings-desc">Snake body appearance</span>
                                 </div>
+
                                 <div className="segment-ctrl">
                                     {(['classic', 'rainbow', 'cyan', 'fire', 'gold'] as SnakeSkin[]).map(sk => (
                                         <button key={sk}
@@ -999,41 +1023,44 @@ export default function App() {
                 </div>
 
                 {/* On-screen Directional Control Keys (D-Pad) */}
-                <div className="dpad-container" aria-label="On-screen directional controls">
-                    <div className="dpad-row">
-                        <button
-                            className="dpad-btn dpad-up"
-                            aria-label="Steer Up"
-                            onPointerDown={(e) => { e.preventDefault(); handleSteer('UP'); }}
-                        >
-                            ▲
-                        </button>
+                {settings.controls !== 'touch' && (
+                    <div className="dpad-container" aria-label="On-screen directional controls">
+                        <div className="dpad-row">
+                            <button
+                                className="dpad-btn dpad-up"
+                                aria-label="Steer Up"
+                                onPointerDown={(e) => { e.preventDefault(); handleSteer('UP'); }}
+                            >
+                                ▲
+                            </button>
+                        </div>
+                        <div className="dpad-row">
+                            <button
+                                className="dpad-btn dpad-left"
+                                aria-label="Steer Left"
+                                onPointerDown={(e) => { e.preventDefault(); handleSteer('LEFT'); }}
+                            >
+                                ◄
+                            </button>
+                            <button
+                                className="dpad-btn dpad-down"
+                                aria-label="Steer Down"
+                                onPointerDown={(e) => { e.preventDefault(); handleSteer('DOWN'); }}
+                            >
+                                ▼
+                            </button>
+                            <button
+                                className="dpad-btn dpad-right"
+                                aria-label="Steer Right"
+                                onPointerDown={(e) => { e.preventDefault(); handleSteer('RIGHT'); }}
+                            >
+                                ►
+                            </button>
+                        </div>
                     </div>
-                    <div className="dpad-row">
-                        <button
-                            className="dpad-btn dpad-left"
-                            aria-label="Steer Left"
-                            onPointerDown={(e) => { e.preventDefault(); handleSteer('LEFT'); }}
-                        >
-                            ◄
-                        </button>
-                        <button
-                            className="dpad-btn dpad-down"
-                            aria-label="Steer Down"
-                            onPointerDown={(e) => { e.preventDefault(); handleSteer('DOWN'); }}
-                        >
-                            ▼
-                        </button>
-                        <button
-                            className="dpad-btn dpad-right"
-                            aria-label="Steer Right"
-                            onPointerDown={(e) => { e.preventDefault(); handleSteer('RIGHT'); }}
-                        >
-                            ►
-                        </button>
-                    </div>
-                </div>
+                )}
             </div>
+
         </>
     )
 }
