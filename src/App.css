@@ -1300,3 +1300,46 @@ h1 {
 .toast-icon { font-size: 24px; }
 .toast-title { font-size: 11px; text-transform: uppercase; letter-spacing: 1px; color: var(--text-dim); }
 .toast-desc { font-size: 14px; font-weight: 700; }
+
+/* ── On-Screen D-Pad Controls ─────────────────────────── */
+
+.dpad-container {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 6px;
+    margin-top: 18px;
+    touch-action: manipulation;
+    user-select: none;
+}
+
+.dpad-row {
+    display: flex;
+    gap: 8px;
+}
+
+.dpad-btn {
+    width: 52px;
+    height: 52px;
+    background: var(--board-bg);
+    border: 1px solid var(--border);
+    color: var(--text);
+    border-radius: 12px;
+    font-size: 18px;
+    font-weight: bold;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    cursor: pointer;
+    box-shadow: 0 3px 6px rgba(0, 0, 0, 0.2);
+    transition: background 0.15s ease, transform 0.1s ease;
+}
+
+.dpad-btn:active {
+    transform: scale(0.92);
+    background: var(--cell-empty);
+}
+
+.dpad-btn:hover {
+    border-color: var(--text-dim);
+}

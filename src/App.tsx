@@ -553,6 +553,29 @@ export default function App() {
         setTimeout(() => dispatch({ type: 'START' }), 10)
     }, [])
 
+    const handleOpenSettings = useCallback(() => {
+        if (phaseRef.current === 'running') {
+            dispatch({ type: 'PAUSE' })
+        }
+        openSettings()
+    }, [openSettings])
+
+    const handleSteer = useCallback((dir: Direction) => {
+        const phase = phaseRef.current
+        if (phase === 'idle' || phase === 'dead') {
+            dispatch({ type: 'RESET', settings: settingsRef.current })
+            setTimeout(() => {
+                dispatch({ type: 'START' })
+                dispatch({ type: 'STEER', dir })
+            }, 10)
+        } else if (phase === 'paused') {
+            dispatch({ type: 'RESUME' })
+            dispatch({ type: 'STEER', dir })
+        } else {
+            dispatch({ type: 'STEER', dir })
+        }
+    }, [])
+
     const handleSettingChange = useCallback(<K extends keyof Settings>(key: K, value: Settings[K]) => {
         const next = { ...settingsRef.current, [key]: value }
         setSettingsState(next)
@@ -634,6 +657,7 @@ export default function App() {
                             <h3>Controls</h3>
                             <ul>
                                 <li>Arrow keys or WASD to steer</li>
+                                <li>On-screen D-pad under board</li>
                                 <li>Space bar to start / restart</li>
                                 <li><strong>P</strong> or <strong>Esc</strong> to pause / resume</li>
                                 <li>Swipe on mobile</li>
@@ -812,7 +836,7 @@ export default function App() {
                         <button className="stats-button" onClick={openStats}>Stats</button>
                         <button
                             className={`settings-button${activeSettingsCount > 0 ? ' settings-active' : ''}`}
-                            onClick={openSettings}
+                            onClick={handleOpenSettings}
                             aria-label={`Settings${activeSettingsCount > 0 ? ` (${activeSettingsCount} active)` : ''}`}
                         >
                             SETTINGS{activeSettingsCount > 0 && <span className="settings-badge">{activeSettingsCount}</span>}
@@ -914,6 +938,42 @@ export default function App() {
                             )}
                         </div>
                     )}
+                </div>
+
+                {/* On-screen Directional Control Keys (D-Pad) */}
+                <div className="dpad-container" aria-label="On-screen directional controls">
+                    <div className="dpad-row">
+                        <button
+                            className="dpad-btn dpad-up"
+                            aria-label="Steer Up"
+                            onPointerDown={(e) => { e.preventDefault(); handleSteer('UP'); }}
+                        >
+                            ▲
+                        </button>
+                    </div>
+                    <div className="dpad-row">
+                        <button
+                            className="dpad-btn dpad-left"
+                            aria-label="Steer Left"
+                            onPointerDown={(e) => { e.preventDefault(); handleSteer('LEFT'); }}
+                        >
+                            ◄
+                        </button>
+                        <button
+                            className="dpad-btn dpad-down"
+                            aria-label="Steer Down"
+                            onPointerDown={(e) => { e.preventDefault(); handleSteer('DOWN'); }}
+                        >
+                            ▼
+                        </button>
+                        <button
+                            className="dpad-btn dpad-right"
+                            aria-label="Steer Right"
+                            onPointerDown={(e) => { e.preventDefault(); handleSteer('RIGHT'); }}
+                        >
+                            ►
+                        </button>
+                    </div>
                 </div>
             </div>
         </>
