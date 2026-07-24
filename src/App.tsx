@@ -319,6 +319,28 @@ export default function App() {
     const [speedRecords, setSpeedRecords] = useSpeedRecordsState()
     const [particles, setParticles] = useParticlesState()
     const [achievementToast, setAchievementToast] = useAchievementToastState()
+    const [deferredPrompt, setDeferredPrompt] = useInstallPromptState()
+
+
+
+    useEffect(() => {
+        const handleBeforeInstall = (e: Event) => {
+            e.preventDefault()
+            setDeferredPrompt(e)
+        }
+        window.addEventListener('beforeinstallprompt', handleBeforeInstall)
+        return () => window.removeEventListener('beforeinstallprompt', handleBeforeInstall)
+    }, [setDeferredPrompt])
+
+    const handleInstallClick = useCallback(async () => {
+        if (!deferredPrompt) return
+        deferredPrompt.prompt()
+        const choice = await (deferredPrompt as any).userChoice
+        if (choice?.outcome === 'accepted') {
+            setDeferredPrompt(null)
+        }
+    }, [deferredPrompt, setDeferredPrompt])
+
 
     const tickRef = useRef<ReturnType<typeof setInterval> | null>(null)
     const animRef = useRef<number | null>(null)
@@ -832,7 +854,13 @@ export default function App() {
                         >
                             SETTINGS{activeSettingsCount > 0 && <span className="settings-badge">{activeSettingsCount}</span>}
                         </button>
+                        {deferredPrompt && (
+                            <button className="install-button" onClick={handleInstallClick} aria-label="Install App PWA">
+                                📥 Install App
+                            </button>
+                        )}
                     </div>
+
                     <div className="speed-selector">
                         {(['slow', 'normal', 'fast'] as Speed[]).map(s => (
                             <button
@@ -1006,6 +1034,8 @@ function useFlashHeadState() { return useSimpleState(false) }
 function useSpeedRecordsState() { return useSimpleState<Record<Speed, number>>({ slow: 0, normal: 0, fast: 0 }) }
 function useParticlesState() { return useSimpleState<Particle[]>([]) }
 function useAchievementToastState() { return useSimpleState<{ title: string; desc: string } | null>(null) }
+function useInstallPromptState() { return useSimpleState<any>(null) }
+
 
 function useClosableOverlay() {
     const [visible, setVisible] = useSimpleState(false)

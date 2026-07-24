@@ -8,7 +8,7 @@
   <meta name="description"
     content="Minimalistic snake game. Eat food, grow longer, don't hit the walls. Built with React.">
   <meta property="og:type" content="website">
-  <meta property="og:url" content="https://apps.barczynski.dev/snake">
+  <meta property="og:url" content="https://games.barczynski.dev/snake">
   <meta property="og:title" content="Snake — barczynski.dev">
   <meta property="og:description"
     content="Minimalistic snake game. Eat food, grow longer, don't hit the walls. Built with React.">
@@ -17,7 +17,12 @@
   <meta name="twitter:description"
     content="Minimalistic snake game. Eat food, grow longer, don't hit the walls. Built with React.">
   <link rel="icon" type="image/svg+xml" href="./favicon.svg">
+  <link rel="apple-touch-icon" href="./icon-192.png">
+  <link rel="manifest" href="./site.webmanifest">
   <meta name="theme-color" content="#050505">
+  <meta name="mobile-web-app-capable" content="yes">
+  <meta name="apple-mobile-web-app-capable" content="yes">
+  <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
   <link href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@300;400;500;600;700&display=swap"
@@ -94,13 +99,15 @@
       stroke-linecap="round" stroke-linejoin="round">
       <path d="M19 12H5M12 5l-7 7 7 7" />
     </svg>
-    apps.barczynski.dev
+    games.barczynski.dev
   </a>
   <div id="root" role="main"></div>
   <script type="module" src="/src/main.tsx"></script>
   <script>
     if ('serviceWorker' in navigator) {
-      navigator.serviceWorker.getRegistrations().then(regs => regs.forEach(r => r.unregister()));
+      window.addEventListener('load', () => {
+        navigator.serviceWorker.register('./sw.js').catch(() => {});
+      });
     }
   </script>
 </body>

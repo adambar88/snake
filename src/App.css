@@ -571,12 +571,32 @@ h1 {
     text-align: center;
 }
 
-.stats-button:hover,
 .restart-button:hover,
-.settings-button:hover,
-.speed-button:hover {
+.stats-button:hover,
+.settings-button:hover {
     color: var(--text);
+    border-color: var(--text);
 }
+
+.install-button {
+    background: #22c55e;
+    color: #000;
+    font-weight: 700;
+    border: none;
+    border-radius: 6px;
+    padding: 6px 12px;
+    cursor: pointer;
+    font-size: 12px;
+    transition: opacity 0.15s ease;
+    display: inline-flex;
+    align-items: center;
+    gap: 4px;
+}
+
+.install-button:hover {
+    opacity: 0.9;
+}
+
 
 .stats-button:active,
 .restart-button:active,
