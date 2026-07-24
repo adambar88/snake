@@ -637,15 +637,7 @@ export default function App() {
     const currentSpeedBest = parseInt(localStorage.getItem(`snake-best-${speed}`) || '0', 10)
     const isSpeedRecord = state.phase === 'running' && state.score > currentSpeedBest
 
-    const activeSettingsCount = [
-        settings.wrapWalls,
-        settings.bonusFood,
-        settings.powerUpsEnabled,
-        settings.obstacles !== 'none',
-        settings.countdown > 0,
-        settings.autoRamp,
-        settings.gridLines,
-    ].filter(Boolean).length
+
 
     return (
         <>
@@ -902,12 +894,13 @@ export default function App() {
                         <button className="restart-button" onClick={handleReset}>Restart</button>
                         <button className="stats-button" onClick={openStats}>Stats</button>
                         <button
-                            className={`settings-button${activeSettingsCount > 0 ? ' settings-active' : ''}`}
+                            className="settings-button"
                             onClick={handleOpenSettings}
-                            aria-label={`Settings${activeSettingsCount > 0 ? ` (${activeSettingsCount} active)` : ''}`}
+                            aria-label="Settings"
                         >
-                            SETTINGS{activeSettingsCount > 0 && <span className="settings-badge">{activeSettingsCount}</span>}
+                            SETTINGS
                         </button>
+
                     </div>
 
 
