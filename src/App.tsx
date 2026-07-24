@@ -820,15 +820,6 @@ export default function App() {
                     </div>
                 </div>
 
-                {/* Active Powerup Bar (Permanently reserved space: zero layout shift & zero board overlap) */}
-                <div className="active-powerup-bar">
-                    {state.activePowerUp && (
-                        <span className={`active-powerup-badge badge-${state.activePowerUp.type}`}>
-                            ⚡ {state.activePowerUp.type.toUpperCase()} MODE
-                        </span>
-                    )}
-                </div>
-
                 {/* Sub-header */}
                 <div className="game-intro">
                     <div className="intro-buttons">
@@ -857,6 +848,16 @@ export default function App() {
                         ))}
                     </div>
                 </div>
+
+                {/* Active Powerup Bar (Placed under slow/normal/fast buttons with reserved height) */}
+                <div className="active-powerup-bar">
+                    {state.activePowerUp && (
+                        <span className={`active-powerup-badge badge-${state.activePowerUp.type}`}>
+                            ⚡ {state.activePowerUp.type.toUpperCase()} MODE
+                        </span>
+                    )}
+                </div>
+
 
                 {/* Board */}
                 <div
