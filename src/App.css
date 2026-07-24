@@ -579,23 +579,50 @@ h1 {
 }
 
 .install-button {
-    background: #22c55e;
-    color: #000;
-    font-weight: 700;
+    flex: 1;
+    background: none;
     border: none;
-    border-radius: 6px;
-    padding: 6px 12px;
+    border-radius: 0;
+    color: var(--text-dim);
+    font-size: 11px;
+    font-weight: 500;
+    font-family: inherit;
+    letter-spacing: 0.06em;
+    text-transform: uppercase;
+    padding: 0 8px;
+    min-height: 44px;
+    height: 44px;
     cursor: pointer;
-    font-size: 12px;
-    transition: opacity 0.15s ease;
+    transition: color 150ms, border-color 150ms;
+    line-height: 1;
+    white-space: nowrap;
+    text-align: center;
     display: inline-flex;
     align-items: center;
+    justify-content: center;
     gap: 4px;
 }
 
 .install-button:hover {
-    opacity: 0.9;
+    color: var(--text);
 }
+
+.install-pwa-setting-btn {
+    background: var(--text);
+    color: var(--bg);
+    border: none;
+    border-radius: 6px;
+    padding: 6px 14px;
+    font-size: 12px;
+    font-weight: 600;
+    cursor: pointer;
+    transition: opacity 0.15s ease;
+}
+
+.install-pwa-setting-btn:hover {
+    opacity: 0.88;
+}
+
 
 
 .stats-button:active,

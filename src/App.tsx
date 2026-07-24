@@ -809,10 +809,22 @@ export default function App() {
                                     ))}
                                 </div>
                             </div>
+                            {deferredPrompt && (
+                                <div className="settings-row">
+                                    <div className="settings-row-text">
+                                        <span className="settings-label">PWA App</span>
+                                        <span className="settings-desc">Install Snake app on your device</span>
+                                    </div>
+                                    <button className="install-pwa-setting-btn" onClick={handleInstallClick}>
+                                        Install
+                                    </button>
+                                </div>
+                            )}
                         </div>
                     </div>
                 </div>
             )}
+
 
             <div className={`container skin-${settings.skin}`}>
                 {/* Header */}
@@ -856,10 +868,16 @@ export default function App() {
                         </button>
                         {deferredPrompt && (
                             <button className="install-button" onClick={handleInstallClick} aria-label="Install App PWA">
-                                📥 Install App
+                                <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round">
+                                    <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/>
+                                    <polyline points="7 10 12 15 17 10"/>
+                                    <line x1="12" y1="15" x2="12" y2="3"/>
+                                </svg>
+                                INSTALL
                             </button>
                         )}
                     </div>
+
 
                     <div className="speed-selector">
                         {(['slow', 'normal', 'fast'] as Speed[]).map(s => (
