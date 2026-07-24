@@ -349,6 +349,9 @@ export default function App() {
     phaseRef.current = state.phase
     const stateRef = useRef(state)
     stateRef.current = state
+    const overlaysOpenRef = useRef(false)
+    overlaysOpenRef.current = showSettings || showHelp || showStats
+
 
     // Apply active theme
     useEffect(() => {
@@ -419,9 +422,16 @@ export default function App() {
         return () => clearTimeout(id)
     }, [state.powerUpItem])
 
+    // Auto-pause whenever any overlay modal is opened
+    useEffect(() => {
+        if ((showSettings || showHelp || showStats) && phaseRef.current === 'running') {
+            dispatch({ type: 'PAUSE' })
+        }
+    }, [showSettings, showHelp, showStats])
+
     // Game tick
     useEffect(() => {
-        if (state.phase === 'running') {
+        if (state.phase === 'running' && !showSettings && !showHelp && !showStats) {
             const ms = currentSpeedMs(speedRef.current, state.speedLevel, state.activePowerUp)
             tickRef.current = setInterval(
                 () => dispatch({ type: 'TICK', settings: settingsRef.current }),
@@ -429,8 +439,12 @@ export default function App() {
             )
             return () => { if (tickRef.current) clearInterval(tickRef.current) }
         }
-        if (tickRef.current) clearInterval(tickRef.current)
-    }, [state.phase, state.speedLevel, state.activePowerUp])
+        if (tickRef.current) {
+            clearInterval(tickRef.current)
+            tickRef.current = null
+        }
+    }, [state.phase, state.speedLevel, state.activePowerUp, showSettings, showHelp, showStats])
+
 
     // Countdown timer
     useEffect(() => {
@@ -513,6 +527,7 @@ export default function App() {
             ArrowRight: 'RIGHT', d: 'RIGHT', D: 'RIGHT',
         }
         const onKey = (e: KeyboardEvent) => {
+            if (overlaysOpenRef.current) return
             const phase = phaseRef.current
             if (e.key === 'p' || e.key === 'P' || e.key === 'Escape') {
                 if (phase === 'running') { e.preventDefault(); dispatch({ type: 'PAUSE' }) }
@@ -549,6 +564,7 @@ export default function App() {
         let sx = 0, sy = 0
         const onStart = (e: TouchEvent) => { sx = e.touches[0].clientX; sy = e.touches[0].clientY }
         const onEnd = (e: TouchEvent) => {
+            if (overlaysOpenRef.current) return
             const dx = e.changedTouches[0].clientX - sx
             const dy = e.changedTouches[0].clientY - sy
             if (Math.abs(dx) < 30 && Math.abs(dy) < 30) return
@@ -583,6 +599,7 @@ export default function App() {
     }, [openSettings])
 
     const handleSteer = useCallback((dir: Direction) => {
+        if (overlaysOpenRef.current) return
         const phase = phaseRef.current
         if (phase === 'idle' || phase === 'dead') {
             dispatch({ type: 'RESET', settings: settingsRef.current })
@@ -597,6 +614,7 @@ export default function App() {
             dispatch({ type: 'STEER', dir })
         }
     }, [])
+
 
     const handleSettingChange = useCallback(<K extends keyof Settings>(key: K, value: Settings[K]) => {
         const next = { ...settingsRef.current, [key]: value }
