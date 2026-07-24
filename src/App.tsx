@@ -1,10 +1,15 @@
 import { useEffect, useRef, useCallback, useReducer, useMemo } from 'react'
 import './App.css'
 import {
-    type Direction, type Point, type ObstaclePreset, GRID, SPEED_MS,
-    createInitialSnake, moveSnake, grow,
-    isDead, placeFood, oppositeDir, generateObstacles,
+    type Direction, type Point, type ObstaclePreset, type PowerUpType, type VisualTheme, type SnakeSkin,
+    type PowerUpItem, type ActivePowerUp, GRID, SPEED_MS,
+    createInitialSnake, moveSnake, grow, shrinkSnake,
+    isDead, placeFood, oppositeDir, generateObstacles, getRandomPowerUpType,
 } from './gameLogic'
+import {
+    playEatSound, playBonusSound, playPowerUpSound, playDeathSound, playHighScoreSound,
+} from './sound'
+import { createParticleBurst, updateParticles, type Particle } from './particles'
 
 // ── Types ──────────────────────────────────────────────
 
@@ -19,6 +24,10 @@ interface Stats {
 interface Settings {
     wrapWalls: boolean
     bonusFood: boolean
+    powerUpsEnabled: boolean
+    soundEnabled: boolean
+    theme: VisualTheme
+    skin: SnakeSkin
     obstacles: ObstaclePreset
     countdown: 0 | 60 | 90
     autoRamp: boolean
@@ -27,7 +36,11 @@ interface Settings {
 
 const DEFAULT_SETTINGS: Settings = {
     wrapWalls: false,
-    bonusFood: false,
+    bonusFood: true,
+    powerUpsEnabled: true,
+    soundEnabled: true,
+    theme: 'modern',
+    skin: 'classic',
     obstacles: 'none',
     countdown: 0,
     autoRamp: false,
@@ -54,15 +67,7 @@ function saveSettings(s: Settings) {
     localStorage.setItem('snake-settings', JSON.stringify(s))
 }
 
-// ── Theme ──────────────────────────────────────────────
-
-function getInitialTheme(): string {
-    const stored = localStorage.getItem('barczynski-theme')
-    if (stored) return stored
-    return window.matchMedia('(prefers-color-scheme: dark)').matches ? 'dark' : 'light'
-}
-
-function applyTheme(theme: string) {
+function applyTheme(theme: VisualTheme) {
     document.documentElement.setAttribute('data-theme', theme)
     localStorage.setItem('barczynski-theme', theme)
 }
@@ -81,6 +86,8 @@ interface GameState {
     snake: Point[]
     food: Point
     bonusFood: BonusFood | null
+    powerUpItem: PowerUpItem | null
+    activePowerUp: ActivePowerUp | null
     obstacles: Point[]
     dir: Direction
     pendingDir: Direction
@@ -98,6 +105,8 @@ function initState(settings: Settings): GameState {
         snake,
         food,
         bonusFood: null,
+        powerUpItem: null,
+        activePowerUp: null,
         obstacles,
         dir: 'RIGHT',
         pendingDir: 'RIGHT',
@@ -116,12 +125,19 @@ type Action =
     | { type: 'COUNTDOWN_TICK' }
     | { type: 'SPAWN_BONUS'; pos: Point; expiresAt: number }
     | { type: 'EXPIRE_BONUS' }
+    | { type: 'SPAWN_POWERUP'; pos: Point; powerType: PowerUpType; expiresAt: number }
+    | { type: 'EXPIRE_POWERUP_ITEM' }
+    | { type: 'EXPIRE_ACTIVE_POWERUP' }
     | { type: 'STEER'; dir: Direction }
     | { type: 'RESET'; settings: Settings }
 
-function currentSpeedMs(speed: Speed, speedLevel: number): number {
+function currentSpeedMs(speed: Speed, speedLevel: number, activePowerUp: ActivePowerUp | null): number {
     const base = SPEED_MS[speed]
-    return Math.max(40, Math.round(base * Math.pow(0.9, speedLevel)))
+    let ms = Math.max(40, Math.round(base * Math.pow(0.9, speedLevel)))
+    if (activePowerUp?.type === 'slow') {
+        ms = Math.round(ms * 1.5)
+    }
+    return ms
 }
 
 function reducer(state: GameState, action: Action): GameState {
@@ -145,21 +161,50 @@ function reducer(state: GameState, action: Action): GameState {
             const { settings } = action
             const newDir = state.pendingDir
             const moved = moveSnake(state.snake, newDir, settings.wrapWalls)
-            if (isDead(moved, state.obstacles, settings.wrapWalls)) {
+            const isGhost = state.activePowerUp?.type === 'ghost'
+
+            if (isDead(moved, state.obstacles, settings.wrapWalls, isGhost)) {
                 return { ...state, dir: newDir, snake: moved, phase: 'dead' }
             }
+
             const ateFood = moved[0].x === state.food.x && moved[0].y === state.food.y
             const ateBonus = state.bonusFood !== null &&
                 moved[0].x === state.bonusFood.pos.x && moved[0].y === state.bonusFood.pos.y
+            const atePowerUp = state.powerUpItem !== null &&
+                moved[0].x === state.powerUpItem.pos.x && moved[0].y === state.powerUpItem.pos.y
+
+            let activePowerUp = state.activePowerUp
+            let newSnake = moved
+
+            if (atePowerUp && state.powerUpItem) {
+                const pType = state.powerUpItem.type
+                activePowerUp = { type: pType, expiresAt: Date.now() + 6000 }
+                if (pType === 'shrink') {
+                    newSnake = shrinkSnake(moved)
+                }
+            }
+
             const bonusValue = state.bonusFood?.value ?? 0
-            const newSnake = (ateFood || ateBonus) ? grow(moved) : moved
+            const extraGoldenPoints = (atePowerUp && state.powerUpItem?.type === 'golden') ? 5 : 0
+
+            if (ateFood || ateBonus) {
+                newSnake = grow(newSnake)
+            }
+
             const newFood = ateFood
-                ? placeFood(newSnake, state.obstacles, state.bonusFood ? [state.bonusFood.pos] : [])
+                ? placeFood(newSnake, state.obstacles, [
+                    ...(state.bonusFood ? [state.bonusFood.pos] : []),
+                    ...(state.powerUpItem ? [state.powerUpItem.pos] : []),
+                ])
                 : state.food
+
             const newBonus = ateBonus ? null : state.bonusFood
-            const scoreGain = (ateFood ? 1 : 0) + (ateBonus ? bonusValue : 0)
+            const newPowerUpItem = atePowerUp ? null : state.powerUpItem
+
+            const scoreGain = (ateFood ? 1 : 0) + (ateBonus ? bonusValue : 0) + extraGoldenPoints
             const newScore = state.score + scoreGain
             const newSpeedLevel = settings.autoRamp ? Math.floor(newScore / 10) : 0
+
             return {
                 ...state,
                 dir: newDir,
@@ -167,6 +212,8 @@ function reducer(state: GameState, action: Action): GameState {
                 snake: newSnake,
                 food: newFood,
                 bonusFood: newBonus,
+                powerUpItem: newPowerUpItem,
+                activePowerUp,
                 score: newScore,
                 speedLevel: newSpeedLevel,
                 phase: 'running',
@@ -187,6 +234,19 @@ function reducer(state: GameState, action: Action): GameState {
         case 'EXPIRE_BONUS':
             return { ...state, bonusFood: null }
 
+        case 'SPAWN_POWERUP':
+            if (state.powerUpItem !== null) return state
+            return {
+                ...state,
+                powerUpItem: { pos: action.pos, type: action.powerType, expiresAt: action.expiresAt },
+            }
+
+        case 'EXPIRE_POWERUP_ITEM':
+            return { ...state, powerUpItem: null }
+
+        case 'EXPIRE_ACTIVE_POWERUP':
+            return { ...state, activePowerUp: null }
+
         case 'RESET':
             return initState(action.settings)
 
@@ -197,12 +257,24 @@ function reducer(state: GameState, action: Action): GameState {
 
 // ── Board building ─────────────────────────────────────
 
-type CellType = 'empty' | 'head' | 'body' | 'tail' | 'food' | 'bonus' | 'obstacle'
+type CellType =
+    | 'empty'
+    | 'head'
+    | 'body'
+    | 'tail'
+    | 'food'
+    | 'bonus'
+    | 'obstacle'
+    | 'powerup-ghost'
+    | 'powerup-slow'
+    | 'powerup-shrink'
+    | 'powerup-golden'
 
 function buildGrid(
     snake: Point[],
     food: Point,
     bonusFood: BonusFood | null,
+    powerUpItem: PowerUpItem | null,
     obstacles: Point[],
 ): CellType[][] {
     const grid: CellType[][] = Array.from({ length: GRID }, () => Array(GRID).fill('empty'))
@@ -218,6 +290,9 @@ function buildGrid(
     }
     grid[food.y][food.x] = 'food'
     if (bonusFood) grid[bonusFood.pos.y][bonusFood.pos.x] = 'bonus'
+    if (powerUpItem) {
+        grid[powerUpItem.pos.y][powerUpItem.pos.x] = `powerup-${powerUpItem.type}` as CellType
+    }
     return grid
 }
 
@@ -233,7 +308,6 @@ export default function App() {
     speedRef.current = speed
 
     const [state, dispatch] = useReducer(reducer, undefined, () => initState(settings))
-    const [theme, setThemeState] = useThemeState()
     const [showHelp, openHelp, isHelpClosing, closeHelp] = useClosableOverlay()
     const [showStats, openStats, isStatsClosing, closeStats] = useClosableOverlay()
     const [showSettings, openSettings, isSettingsClosing, closeSettings] = useClosableOverlay()
@@ -243,28 +317,90 @@ export default function App() {
     const [isNewBest, setIsNewBest] = useNewBestState()
     const [flashHead, setFlashHead] = useFlashHeadState()
     const [speedRecords, setSpeedRecords] = useSpeedRecordsState()
+    const [particles, setParticles] = useParticlesState()
+    const [achievementToast, setAchievementToast] = useAchievementToastState()
+
     const tickRef = useRef<ReturnType<typeof setInterval> | null>(null)
+    const animRef = useRef<number | null>(null)
     const prevScore = useRef(state.score)
     const phaseRef = useRef(state.phase)
     phaseRef.current = state.phase
-    const speedRef2 = speedRef  // alias kept for clarity in effects
     const stateRef = useRef(state)
     stateRef.current = state
-    // Score delta + flash
+
+    // Apply active theme
+    useEffect(() => {
+        applyTheme(settings.theme)
+    }, [settings.theme])
+
+    // Particle Animation Loop
+    useEffect(() => {
+        if (particles.length === 0) return
+        animRef.current = requestAnimationFrame(() => {
+            setParticles(prev => updateParticles(prev))
+        })
+        return () => {
+            if (animRef.current) cancelAnimationFrame(animRef.current)
+        }
+    }, [particles, setParticles])
+
+    // Score delta + Audio triggers + Particle explosions
     useEffect(() => {
         if (state.score > prevScore.current) {
-            setScoreDelta(state.score - prevScore.current)
+            const gain = state.score - prevScore.current
+            setScoreDelta(gain)
             setTimeout(() => setScoreDelta(null), 800)
             setFlashHead(true)
             setTimeout(() => setFlashHead(false), 200)
+
+            // Audio & Particles
+            if (gain >= 3) {
+                playBonusSound(settingsRef.current.soundEnabled)
+                setParticles(prev => [...prev, ...createParticleBurst(state.snake[0].x, state.snake[0].y, '#eab308', 20)])
+            } else {
+                playEatSound(settingsRef.current.soundEnabled)
+                setParticles(prev => [...prev, ...createParticleBurst(state.snake[0].x, state.snake[0].y, '#22c55e', 12)])
+            }
         }
         prevScore.current = state.score
-    }, [state.score, setScoreDelta, setFlashHead])
+    }, [state.score, state.snake, setScoreDelta, setFlashHead, setParticles])
 
-    // Game tick — restarts when speedLevel changes (auto-ramp)
+    // Active powerup expiry watcher
+    useEffect(() => {
+        if (!state.activePowerUp) return
+        const remaining = state.activePowerUp.expiresAt - Date.now()
+        if (remaining <= 0) { dispatch({ type: 'EXPIRE_ACTIVE_POWERUP' }); return }
+        const id = setTimeout(() => dispatch({ type: 'EXPIRE_ACTIVE_POWERUP' }), remaining)
+        return () => clearTimeout(id)
+    }, [state.activePowerUp])
+
+    // PowerUp spawner — fires every 12 s while running
+    useEffect(() => {
+        if (state.phase !== 'running' || !settings.powerUpsEnabled) return
+        const id = setInterval(() => {
+            const cur = stateRef.current
+            if (cur.powerUpItem !== null) return
+            const pType = getRandomPowerUpType()
+            const pos = placeFood(cur.snake, cur.obstacles, [cur.food, ...(cur.bonusFood ? [cur.bonusFood.pos] : [])])
+            dispatch({ type: 'SPAWN_POWERUP', pos, powerType: pType, expiresAt: Date.now() + 7000 })
+            playPowerUpSound(settingsRef.current.soundEnabled)
+        }, 12000)
+        return () => clearInterval(id)
+    }, [state.phase, settings.powerUpsEnabled])
+
+    // PowerUp expiry watcher
+    useEffect(() => {
+        if (!state.powerUpItem) return
+        const remaining = state.powerUpItem.expiresAt - Date.now()
+        if (remaining <= 0) { dispatch({ type: 'EXPIRE_POWERUP_ITEM' }); return }
+        const id = setTimeout(() => dispatch({ type: 'EXPIRE_POWERUP_ITEM' }), remaining)
+        return () => clearTimeout(id)
+    }, [state.powerUpItem])
+
+    // Game tick
     useEffect(() => {
         if (state.phase === 'running') {
-            const ms = currentSpeedMs(speedRef2.current, state.speedLevel)
+            const ms = currentSpeedMs(speedRef.current, state.speedLevel, state.activePowerUp)
             tickRef.current = setInterval(
                 () => dispatch({ type: 'TICK', settings: settingsRef.current }),
                 ms,
@@ -272,16 +408,16 @@ export default function App() {
             return () => { if (tickRef.current) clearInterval(tickRef.current) }
         }
         if (tickRef.current) clearInterval(tickRef.current)
-    }, [state.phase, state.speedLevel])
+    }, [state.phase, state.speedLevel, state.activePowerUp])
 
-    // Countdown timer (1 s interval, separate from game tick)
+    // Countdown timer
     useEffect(() => {
         if (state.phase !== 'running' || state.timeLeft < 0) return
         const id = setInterval(() => dispatch({ type: 'COUNTDOWN_TICK' }), 1000)
         return () => clearInterval(id)
     }, [state.phase, state.timeLeft])
 
-    // Bonus food spawner — fires every 8 s while running
+    // Bonus food spawner
     useEffect(() => {
         if (state.phase !== 'running' || !settings.bonusFood) return
         const id = setInterval(() => {
@@ -302,13 +438,17 @@ export default function App() {
         return () => clearTimeout(id)
     }, [state.bonusFood])
 
-    // Save stats on death — read fresh from localStorage to avoid stale closure
+    // Save stats on death
     useEffect(() => {
         if (state.phase === 'dead') {
+            playDeathSound(settingsRef.current.soundEnabled)
             setShake(true)
             setTimeout(() => setShake(false), 500)
             const current = loadStats()
-            setIsNewBest(state.score > current.bestScore)
+            const isBest = state.score > current.bestScore
+            setIsNewBest(isBest)
+            if (isBest) playHighScoreSound(settingsRef.current.soundEnabled)
+
             const next: Stats = {
                 gamesPlayed: current.gamesPlayed + 1,
                 bestScore: Math.max(current.bestScore, state.score),
@@ -316,19 +456,24 @@ export default function App() {
             }
             setStats(next)
             saveStats(next)
-            // Update per-speed best record
-            const speedKey = `snake-best-${speedRef2.current}`
+
+            const speedKey = `snake-best-${speedRef.current}`
             const prevBest = parseInt(localStorage.getItem(speedKey) || '0', 10)
             if (state.score > prevBest) localStorage.setItem(speedKey, String(state.score))
-        }
-    }, [state.phase, state.score, setStats, setIsNewBest])
 
-    // Clear new-best badge when a new game starts
+            // Check Achievements
+            if (state.score >= 50 && !localStorage.getItem('achievement-50pts')) {
+                localStorage.setItem('achievement-50pts', 'true')
+                setAchievementToast({ title: 'Achievement Unlocked', desc: 'Score Master: 50+ Points!' })
+                setTimeout(() => setAchievementToast(null), 4000)
+            }
+        }
+    }, [state.phase, state.score, setStats, setIsNewBest, setAchievementToast])
+
     useEffect(() => {
         if (state.phase === 'running') setIsNewBest(false)
     }, [state.phase, setIsNewBest])
 
-    // Snapshot localStorage speed records when stats overlay opens
     useEffect(() => {
         if (showStats) setSpeedRecords({
             slow: parseInt(localStorage.getItem('snake-best-slow') || '0', 10),
@@ -337,7 +482,7 @@ export default function App() {
         })
     }, [showStats, setSpeedRecords])
 
-    // Keyboard — stable listener via phaseRef, registered once
+    // Keyboard controls
     useEffect(() => {
         const dirMap: Record<string, Direction> = {
             ArrowUp: 'UP', w: 'UP', W: 'UP',
@@ -347,7 +492,6 @@ export default function App() {
         }
         const onKey = (e: KeyboardEvent) => {
             const phase = phaseRef.current
-            // Pause / resume
             if (e.key === 'p' || e.key === 'P' || e.key === 'Escape') {
                 if (phase === 'running') { e.preventDefault(); dispatch({ type: 'PAUSE' }) }
                 else if (phase === 'paused') { e.preventDefault(); dispatch({ type: 'RESUME' }) }
@@ -378,7 +522,7 @@ export default function App() {
         return () => window.removeEventListener('keydown', onKey)
     }, [])
 
-    // Touch swipe — stable listener via phaseRef, registered once
+    // Touch swipe controls
     useEffect(() => {
         let sx = 0, sy = 0
         const onStart = (e: TouchEvent) => { sx = e.touches[0].clientX; sy = e.touches[0].clientY }
@@ -416,15 +560,17 @@ export default function App() {
     }, [setSettingsState])
 
     const grid = useMemo(
-        () => buildGrid(state.snake, state.food, state.bonusFood, state.obstacles),
-        [state.snake, state.food, state.bonusFood, state.obstacles],
+        () => buildGrid(state.snake, state.food, state.bonusFood, state.powerUpItem, state.obstacles),
+        [state.snake, state.food, state.bonusFood, state.powerUpItem, state.obstacles],
     )
+
     const currentSpeedBest = parseInt(localStorage.getItem(`snake-best-${speed}`) || '0', 10)
     const isSpeedRecord = state.phase === 'running' && state.score > currentSpeedBest
 
     const activeSettingsCount = [
         settings.wrapWalls,
         settings.bonusFood,
+        settings.powerUpsEnabled,
         settings.obstacles !== 'none',
         settings.countdown > 0,
         settings.autoRamp,
@@ -433,25 +579,37 @@ export default function App() {
 
     return (
         <>
-            {/* Theme toggle */}
-            <button
-                className="theme-btn"
-                aria-label={theme === 'dark' ? 'Switch to light mode' : 'Switch to dark mode'}
-                onClick={() => { const t = theme === 'dark' ? 'light' : 'dark'; setThemeState(t); applyTheme(t) }}
-            >
-                {theme === 'dark' ? (
-                    <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round">
-                        <circle cx="12" cy="12" r="5" /><line x1="12" y1="1" x2="12" y2="3" /><line x1="12" y1="21" x2="12" y2="23" />
-                        <line x1="4.22" y1="4.22" x2="5.64" y2="5.64" /><line x1="18.36" y1="18.36" x2="19.78" y2="19.78" />
-                        <line x1="1" y1="12" x2="3" y2="12" /><line x1="21" y1="12" x2="23" y2="12" />
-                        <line x1="4.22" y1="19.78" x2="5.64" y2="18.36" /><line x1="18.36" y1="5.64" x2="19.78" y2="4.22" />
-                    </svg>
-                ) : (
-                    <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round">
-                        <path d="M21 12.79A9 9 0 1 1 11.21 3a7 7 0 0 0 9.79 9.79z" />
-                    </svg>
-                )}
-            </button>
+            {/* Header controls & Audio toggle */}
+            <div className="header-controls" style={{ position: 'absolute', top: 16, right: 16 }}>
+                <button
+                    className="sound-toggle-btn"
+                    aria-label={settings.soundEnabled ? 'Mute audio' : 'Enable audio'}
+                    onClick={() => handleSettingChange('soundEnabled', !settings.soundEnabled)}
+                >
+                    {settings.soundEnabled ? (
+                        <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                            <polygon points="11 5 6 9 2 9 2 15 6 15 11 19 11 5" />
+                            <path d="M19.07 4.93a10 10 0 0 1 0 14.14M15.54 8.46a5 5 0 0 1 0 7.07" />
+                        </svg>
+                    ) : (
+                        <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                            <line x1="1" y1="1" x2="23" y2="23" />
+                            <polygon points="11 5 6 9 2 9 2 15 6 15 11 19 11 5" />
+                        </svg>
+                    )}
+                </button>
+            </div>
+
+            {/* Achievement Toast */}
+            {achievementToast && (
+                <div className="achievement-toast">
+                    <span className="toast-icon">🏆</span>
+                    <div>
+                        <div className="toast-title">{achievementToast.title}</div>
+                        <div className="toast-desc">{achievementToast.desc}</div>
+                    </div>
+                </div>
+            )}
 
             {/* Help overlay */}
             {showHelp && (
@@ -461,7 +619,16 @@ export default function App() {
                         <p className="help-title">How to play</p>
                         <div className="help-section">
                             <h3>Basics</h3>
-                            <p>Guide the snake to eat food. Each piece eaten grows the snake and scores a point. Avoid hitting the walls or your own body.</p>
+                            <p>Guide the snake to eat food. Each piece eaten grows the snake and scores a point. Collect Power-Ups for special abilities!</p>
+                        </div>
+                        <div className="help-section">
+                            <h3>Power-Ups</h3>
+                            <ul>
+                                <li>👻 <strong>Ghost</strong>: Pass through walls & obstacles</li>
+                                <li>⏱️ <strong>Slow-Mo</strong>: Slows down speed by 40%</li>
+                                <li>✂️ <strong>Shrink</strong>: Reduces snake length by 2</li>
+                                <li>🌟 <strong>Golden Apple</strong>: Scores +5 Bonus Points</li>
+                            </ul>
                         </div>
                         <div className="help-section">
                             <h3>Controls</h3>
@@ -471,14 +638,6 @@ export default function App() {
                                 <li><strong>P</strong> or <strong>Esc</strong> to pause / resume</li>
                                 <li>Swipe on mobile</li>
                             </ul>
-                        </div>
-                        <div className="help-section">
-                            <h3>Speed</h3>
-                            <p>Choose Slow, Normal, or Fast before or during a game. Higher speed = more challenge.</p>
-                        </div>
-                        <div className="help-section">
-                            <h3>Extras (Settings)</h3>
-                            <p>Use the Settings panel to enable wrap walls, bonus food, obstacles, countdown, auto speed-ramp, and grid lines.</p>
                         </div>
                     </div>
                 </div>
@@ -523,6 +682,49 @@ export default function App() {
                         <p className="help-title">Settings</p>
                         <p className="settings-note">Changes apply on the next new game.</p>
                         <div className="settings-group">
+                            <div className="settings-row settings-row-wide">
+                                <div className="settings-row-text">
+                                    <span className="settings-label">Visual Theme</span>
+                                    <span className="settings-desc">Color palette & visual style</span>
+                                </div>
+                                <div className="segment-ctrl">
+                                    {(['modern', 'neon', 'gameboy', 'sunset'] as VisualTheme[]).map(t => (
+                                        <button key={t}
+                                            className={`segment-btn${settings.theme === t ? ' segment-active' : ''}`}
+                                            onClick={() => handleSettingChange('theme', t)}
+                                            aria-pressed={settings.theme === t}>
+                                            {t}
+                                        </button>
+                                    ))}
+                                </div>
+                            </div>
+                            <div className="settings-row settings-row-wide">
+                                <div className="settings-row-text">
+                                    <span className="settings-label">Snake Skin</span>
+                                    <span className="settings-desc">Snake body appearance</span>
+                                </div>
+                                <div className="segment-ctrl">
+                                    {(['classic', 'rainbow', 'cyan', 'fire', 'gold'] as SnakeSkin[]).map(sk => (
+                                        <button key={sk}
+                                            className={`segment-btn${settings.skin === sk ? ' segment-active' : ''}`}
+                                            onClick={() => handleSettingChange('skin', sk)}
+                                            aria-pressed={settings.skin === sk}>
+                                            {sk}
+                                        </button>
+                                    ))}
+                                </div>
+                            </div>
+                            <div className="settings-row">
+                                <div className="settings-row-text">
+                                    <span className="settings-label">Power-Ups</span>
+                                    <span className="settings-desc">Spawn Ghost, Slow-Mo, Shrink & Golden apples</span>
+                                </div>
+                                <button className={`toggle-btn${settings.powerUpsEnabled ? ' toggle-on' : ''}`}
+                                    onClick={() => handleSettingChange('powerUpsEnabled', !settings.powerUpsEnabled)}
+                                    aria-pressed={settings.powerUpsEnabled}>
+                                    {settings.powerUpsEnabled ? 'On' : 'Off'}
+                                </button>
+                            </div>
                             <div className="settings-row">
                                 <div className="settings-row-text">
                                     <span className="settings-label">Wrap walls</span>
@@ -537,7 +739,7 @@ export default function App() {
                             <div className="settings-row">
                                 <div className="settings-row-text">
                                     <span className="settings-label">Bonus food</span>
-                                    <span className="settings-desc">3-pt item appears every ~8 s, vanishes in 5 s</span>
+                                    <span className="settings-desc">3-pt item appears every ~8 s</span>
                                 </div>
                                 <button className={`toggle-btn${settings.bonusFood ? ' toggle-on' : ''}`}
                                     onClick={() => handleSettingChange('bonusFood', !settings.bonusFood)}
@@ -548,7 +750,7 @@ export default function App() {
                             <div className="settings-row settings-row-wide">
                                 <div className="settings-row-text">
                                     <span className="settings-label">Obstacles</span>
-                                    <span className="settings-desc">Static wall blocks placed on the board</span>
+                                    <span className="settings-desc">Static wall blocks on board</span>
                                 </div>
                                 <div className="segment-ctrl">
                                     {(['none', 'sparse', 'dense', 'maze'] as ObstaclePreset[]).map(p => (
@@ -561,50 +763,12 @@ export default function App() {
                                     ))}
                                 </div>
                             </div>
-                            <div className="settings-row settings-row-wide">
-                                <div className="settings-row-text">
-                                    <span className="settings-label">Countdown</span>
-                                    <span className="settings-desc">Time limit — score as many pts as possible</span>
-                                </div>
-                                <div className="segment-ctrl">
-                                    {([0, 60, 90] as const).map(v => (
-                                        <button key={v}
-                                            className={`segment-btn${settings.countdown === v ? ' segment-active' : ''}`}
-                                            onClick={() => handleSettingChange('countdown', v)}
-                                            aria-pressed={settings.countdown === v}>
-                                            {v === 0 ? 'Off' : `${v}s`}
-                                        </button>
-                                    ))}
-                                </div>
-                            </div>
-                            <div className="settings-row">
-                                <div className="settings-row-text">
-                                    <span className="settings-label">Auto speed-ramp</span>
-                                    <span className="settings-desc">Snake speeds up every 10 points</span>
-                                </div>
-                                <button className={`toggle-btn${settings.autoRamp ? ' toggle-on' : ''}`}
-                                    onClick={() => handleSettingChange('autoRamp', !settings.autoRamp)}
-                                    aria-pressed={settings.autoRamp}>
-                                    {settings.autoRamp ? 'On' : 'Off'}
-                                </button>
-                            </div>
-                            <div className="settings-row">
-                                <div className="settings-row-text">
-                                    <span className="settings-label">Grid lines</span>
-                                    <span className="settings-desc">Show cell grid on the board</span>
-                                </div>
-                                <button className={`toggle-btn${settings.gridLines ? ' toggle-on' : ''}`}
-                                    onClick={() => handleSettingChange('gridLines', !settings.gridLines)}
-                                    aria-pressed={settings.gridLines}>
-                                    {settings.gridLines ? 'On' : 'Off'}
-                                </button>
-                            </div>
                         </div>
                     </div>
                 </div>
             )}
 
-            <div className="container">
+            <div className={`container skin-${settings.skin}`}>
                 {/* Header */}
                 <div className="header">
                     <h1>snake</h1>
@@ -632,6 +796,15 @@ export default function App() {
                     </div>
                 </div>
 
+                {/* Active Powerup Badge */}
+                {state.activePowerUp && (
+                    <div style={{ textAlign: 'center', marginBottom: 6 }}>
+                        <span className={`active-powerup-badge badge-${state.activePowerUp.type}`}>
+                            ⚡ {state.activePowerUp.type.toUpperCase()} MODE
+                        </span>
+                    </div>
+                )}
+
                 {/* Sub-header */}
                 <div className="game-intro">
                     <div className="intro-buttons">
@@ -645,7 +818,6 @@ export default function App() {
                             SETTINGS{activeSettingsCount > 0 && <span className="settings-badge">{activeSettingsCount}</span>}
                         </button>
                     </div>
-                    {/* Speed selector */}
                     <div className="speed-selector">
                         {(['slow', 'normal', 'fast'] as Speed[]).map(s => (
                             <button
@@ -672,6 +844,24 @@ export default function App() {
                         else if (state.phase === 'paused') dispatch({ type: 'RESUME' })
                     }}
                 >
+                    {/* Particles layer */}
+                    <div className="particle-layer">
+                        {particles.map(p => (
+                            <div
+                                key={p.id}
+                                className="particle-dot"
+                                style={{
+                                    left: `${p.x}%`,
+                                    top: `${p.y}%`,
+                                    width: `${p.size}px`,
+                                    height: `${p.size}px`,
+                                    backgroundColor: p.color,
+                                    opacity: p.life / p.maxLife,
+                                }}
+                            />
+                        ))}
+                    </div>
+
                     <div className="grid-canvas">
                         {grid.map((row, y) =>
                             row.map((cell, x) => {
@@ -682,6 +872,9 @@ export default function App() {
                                 else if (cell === 'food') cls += ' cell-food'
                                 else if (cell === 'bonus') cls += ' cell-bonus'
                                 else if (cell === 'obstacle') cls += ' cell-obstacle'
+                                else if (cell.startsWith('powerup-')) {
+                                    cls += ` cell-powerup cell-${cell}`
+                                }
                                 return <div key={`${x}-${y}`} className={cls} />
                             })
                         )}
@@ -729,12 +922,6 @@ export default function App() {
 
 // ── Custom hooks ───────────────────────────────────────
 
-function useThemeState() {
-    const init = getInitialTheme()
-    applyTheme(init)
-    return useSimpleState(init)
-}
-
 function useSpeedState() {
     const init = (localStorage.getItem('snake-speed') as Speed) || 'normal'
     const [val, set] = useSimpleState<Speed>(init)
@@ -754,6 +941,8 @@ function useScoreDeltaState() { return useSimpleState<number | null>(null) }
 function useNewBestState() { return useSimpleState(false) }
 function useFlashHeadState() { return useSimpleState(false) }
 function useSpeedRecordsState() { return useSimpleState<Record<Speed, number>>({ slow: 0, normal: 0, fast: 0 }) }
+function useParticlesState() { return useSimpleState<Particle[]>([]) }
+function useAchievementToastState() { return useSimpleState<{ title: string; desc: string } | null>(null) }
 
 function useClosableOverlay() {
     const [visible, setVisible] = useSimpleState(false)
@@ -775,10 +964,15 @@ function useSimpleState<T>(initial: T) {
     return [val, setVal] as const
 }
 
-// minimal useState wrapper with stable setter
-function useStateValue<T>(initial: T): [T, (v: T) => void] {
+type SetStateAction<T> = T | ((prev: T) => T)
+
+function useStateValue<T>(initial: T): [T, (v: SetStateAction<T>) => void] {
     const ref = useRef(initial)
     const [, rerender] = useReducer(x => x + 1, 0)
-    const setter = useCallback((v: T) => { ref.current = v; rerender() }, [])
+    const setter = useCallback((v: SetStateAction<T>) => {
+        ref.current = typeof v === 'function' ? (v as (prev: T) => T)(ref.current) : v
+        rerender()
+    }, [])
     return [ref.current, setter]
 }
+

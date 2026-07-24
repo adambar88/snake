@@ -1,6 +1,20 @@
 export type Direction = 'UP' | 'DOWN' | 'LEFT' | 'RIGHT'
 export type Point = { x: number; y: number }
 export type ObstaclePreset = 'none' | 'sparse' | 'dense' | 'maze'
+export type PowerUpType = 'ghost' | 'slow' | 'shrink' | 'golden'
+export type VisualTheme = 'modern' | 'neon' | 'gameboy' | 'sunset'
+export type SnakeSkin = 'classic' | 'rainbow' | 'cyan' | 'fire' | 'gold'
+
+export interface PowerUpItem {
+    pos: Point
+    type: PowerUpType
+    expiresAt: number
+}
+
+export interface ActivePowerUp {
+    type: PowerUpType
+    expiresAt: number
+}
 
 export const GRID = 20
 
@@ -38,6 +52,11 @@ export function grow(snake: Point[]): Point[] {
     return [...snake, { ...tail }]
 }
 
+export function shrinkSnake(snake: Point[]): Point[] {
+    if (snake.length <= 3) return snake
+    return snake.slice(0, Math.max(3, snake.length - 2))
+}
+
 export function isOutOfBounds(head: Point): boolean {
     return head.x < 0 || head.x >= GRID || head.y < 0 || head.y >= GRID
 }
@@ -47,8 +66,12 @@ export function hasSelfCollision(snake: Point[]): boolean {
     return body.some(seg => seg.x === head.x && seg.y === head.y)
 }
 
-export function isDead(snake: Point[], obstacles: Point[], wrap: boolean): boolean {
+export function isDead(snake: Point[], obstacles: Point[], wrap: boolean, isGhost = false): boolean {
     const head = snake[0]
+    if (isGhost) {
+        // Even in ghost mode, wrap the head if wall-wrapping is on or keep inside grid
+        return false
+    }
     if (!wrap && isOutOfBounds(head)) return true
     if (hasSelfCollision(snake)) return true
     if (obstacles.some(o => o.x === head.x && o.y === head.y)) return true
@@ -65,6 +88,11 @@ export function placeFood(snake: Point[], obstacles: Point[] = [], exclude: Poin
     }
     if (empty.length === 0) return { x: 0, y: 0 }
     return empty[Math.floor(Math.random() * empty.length)]
+}
+
+export function getRandomPowerUpType(): PowerUpType {
+    const types: PowerUpType[] = ['ghost', 'slow', 'shrink', 'golden']
+    return types[Math.floor(Math.random() * types.length)]
 }
 
 export function oppositeDir(a: Direction, b: Direction): boolean {
@@ -98,7 +126,6 @@ export function generateObstacles(preset: ObstaclePreset): Point[] {
     const pts: Point[] = []
 
     if (preset === 'sparse') {
-        // ~12 random single blocks
         while (pts.length < 12) {
             const p = { x: Math.floor(Math.random() * GRID), y: Math.floor(Math.random() * GRID) }
             if (!safe.has(`${p.x},${p.y}`) && !pts.some(o => o.x === p.x && o.y === p.y))
@@ -107,7 +134,6 @@ export function generateObstacles(preset: ObstaclePreset): Point[] {
     }
 
     if (preset === 'dense') {
-        // ~28 random single blocks
         while (pts.length < 28) {
             const p = { x: Math.floor(Math.random() * GRID), y: Math.floor(Math.random() * GRID) }
             if (!safe.has(`${p.x},${p.y}`) && !pts.some(o => o.x === p.x && o.y === p.y))
@@ -116,25 +142,19 @@ export function generateObstacles(preset: ObstaclePreset): Point[] {
     }
 
     if (preset === 'maze') {
-        // Cross walls with gaps
         const mid = Math.floor(GRID / 2)
-        // Horizontal bar top-half with gap in centre
         for (let x = 2; x < GRID - 2; x++) {
             if (Math.abs(x - mid) > 2) pts.push({ x, y: 5 })
         }
-        // Horizontal bar bottom-half
         for (let x = 2; x < GRID - 2; x++) {
             if (Math.abs(x - mid) > 2) pts.push({ x, y: GRID - 6 })
         }
-        // Vertical bar left with gap
         for (let y = 2; y < GRID - 2; y++) {
             if (Math.abs(y - mid) > 2) pts.push({ x: 5, y })
         }
-        // Vertical bar right with gap
         for (let y = 2; y < GRID - 2; y++) {
             if (Math.abs(y - mid) > 2) pts.push({ x: GRID - 6, y })
         }
-        // De-dupe
         const seen = new Set<string>()
         return pts.filter(p => {
             const k = `${p.x},${p.y}`
